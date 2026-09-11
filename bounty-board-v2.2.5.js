@@ -138,8 +138,16 @@ registerPlugin({
             return;
         }
 
-        // Default: place bounty !bounty <player> <gold> <reason>
-        handlePlaceBounty(parts, ev);
+        if (subCommand === 'add') {
+            if (parts.length < 4) {
+                invoker.chat('Usage: !bounty add <playername> <gold_amount> <reason>');
+                return;
+            }
+            handlePlaceBounty(parts.slice(1), ev);
+            return;
+        }
+
+        invoker.chat('Unknown bounty command. Usage: !bounty add <playername> <gold_amount> <reason>');
     }
 
     // ===== BOUNTY OPERATIONS =====
