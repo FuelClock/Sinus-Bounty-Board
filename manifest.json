@@ -2,7 +2,7 @@
     "name": "Bounty Hunter",
     "version": "2.2.4",
     "description": "Complete bounty board system with persistent storage",
-    "author": "Guild Admin",
+    "author": "FuelClock",
     "engine": ">= 0.9.16",
     "backends": ["ts3"],
     "requiredModules": ["engine", "backend", "event"],
