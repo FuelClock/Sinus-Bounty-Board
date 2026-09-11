@@ -1,4 +1,4 @@
-// Bounty Hunter Script v2.2.3 for SinusBot
+// Bounty Hunter Script v2.2.4 for SinusBot
 // Complete bounty board system for sea battle guilds
 // FIXED: Replaced non-existent private-message API with client.chat()
 //       so command responses render in the current channel
@@ -40,7 +40,7 @@ registerPlugin({
 
     // ===== SCRIPT INITIALIZATION =====
     event.on('load', function(ev) {
-        engine.log('Bounty Hunter v2.2.3 loaded');
+        engine.log('Bounty Hunter v2.2.4 loaded');
         engine.log('Configuration - BotName: ' + botName + ', AuthGroup: ' + authorizedGroupId + ', DisplayChannel: ' + displayChannelId);
 
         if (backend.isConnected()) {
@@ -114,7 +114,7 @@ registerPlugin({
         var subCommand = parts[0].toLowerCase();
 
         if (subCommand === 'test') {
-            invoker.chat('[BountyHunter] v2.2.3 test OK — authorized');
+            invoker.chat('[BountyHunter] v2.2.4 test OK — authorized');
             return;
         }
 
