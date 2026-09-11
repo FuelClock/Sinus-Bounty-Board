@@ -6,8 +6,8 @@
 
 registerPlugin({
     name: 'Bounty Hunter',
-    version: '2.2.4',
-    author: 'Guild Admin',
+    version: '2.2.5',
+    author: 'FuelClock',
     description: 'Complete bounty board system with persistent storage',
     backends: ['ts3'],
     vars: [
