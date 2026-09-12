@@ -416,7 +416,7 @@ registerPlugin({
         }
 
         var description = '[center][b][color=#FFD700]BOUNTY BOARD[/color][/b][/center]' +
-            '[br][center]Gold Available: [color=#00FF00]' + totalGold + '[/color][/center]' +
+            '\\n[center]Gold Available: [color=#00FF00]' + totalGold + '[/color][/center]' +
             bountyList;
 
         try {
