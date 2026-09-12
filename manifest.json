@@ -1,6 +1,6 @@
 {
     "name": "Bounty Hunter",
-    "version": "2.2.6",
+    "version": "2.2.7",
     "description": "Complete bounty board system with persistent storage",
     "author": "FuelClock",
     "engine": ">= 0.9.16",

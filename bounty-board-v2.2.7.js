@@ -1,4 +1,4 @@
-// Bounty Hunter Script v2.2.6 for SinusBot
+// Bounty Hunter Script v2.2.7 for SinusBot
 // Complete bounty board system for sea battle guilds
 // FIXED: Replaced non-existent private-message API with client.chat()
 //       so command responses render in the current channel
@@ -10,7 +10,7 @@
 
 registerPlugin({
     name: 'Bounty Hunter',
-    version: '2.2.6',
+    version: '2.2.7',
     author: 'FuelClock',
     description: 'Complete bounty board system with persistent storage',
     backends: ['ts3'],
@@ -59,7 +59,7 @@ registerPlugin({
 
     // ===== SCRIPT INITIALIZATION =====
     event.on('load', function(ev) {
-        engine.log('Bounty Hunter v2.2.6 loaded');
+        engine.log('Bounty Hunter v2.2.7 loaded');
         engine.log('Configuration - BotName: ' + botName + ', AuthGroup: ' + authorizedGroupId + ', DisplayChannel: ' + displayChannelId);
 
         if (backend.isConnected()) {
@@ -134,7 +134,7 @@ registerPlugin({
         var subCommand = parts[0].toLowerCase();
 
         if (subCommand === 'test') {
-            invoker.chat('[BountyHunter] v2.2.6 test OK — authorized');
+            invoker.chat('[BountyHunter] v2.2.7 test OK — authorized');
             return;
         }
 
