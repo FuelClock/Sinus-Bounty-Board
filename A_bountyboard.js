@@ -1,4 +1,4 @@
-// Bounty Hunter Script v2.2.9 for SinusBot
+// Bounty Hunter Script v2.2.10 for SinusBot
 // Complete bounty board system for sea battle guilds
 // FIXED: Replaced non-existent private-message API with client.chat()
 //       so command responses render in the current channel
@@ -10,7 +10,7 @@
 
 registerPlugin({
     name: 'Bounty Hunter',
-    version: '2.2.9',
+    version: '2.2.10',
     author: 'FuelClock',
     description: 'Complete bounty board system with persistent storage',
     backends: ['ts3'],
@@ -18,7 +18,7 @@ registerPlugin({
         { name: 'BOT_NAME', title: 'Bot Command Name', type: 'string', default: 'bounty' },
         { name: 'AUTHORIZED_GROUP', title: 'Server Group ID (authorized to place bounties)', type: 'string', default: '23' },
         { name: 'DISPLAY_CHANNEL_ID', title: 'Channel ID (display bounty board in description)', type: 'string', default: '832' },
-        { name: 'BOT_ADMIN_GROUP', title: 'Server Group ID (admin)', type: 'string', default: '3' },
+        { name: 'BOT_ADMIN_GROUP', title: 'Server Group ID (admin)', type: 'string', default: '17' },
         { name: 'MAX_ACTIVE_BOUNTIES', title: 'Maximum active bounties at once', type: 'number', default: 50 },
         { name: 'AUTO_REFRESH_INTERVAL', title: 'Auto-refresh channel description (seconds, 0 = off)', type: 'number', default: 30 },
         { name: 'MIN_REWARD', title: 'Minimum bounty reward (gold)', type: 'number', default: 1 }
@@ -33,7 +33,7 @@ registerPlugin({
     var botName = config.BOT_NAME || 'bounty';
     var authorizedGroupId = String(config.AUTHORIZED_GROUP || '23');
     var displayChannelId = String(config.DISPLAY_CHANNEL_ID || '832');
-    var botAdminGroupId = String(config.BOT_ADMIN_GROUP || '3');
+    var botAdminGroupId = String(config.BOT_ADMIN_GROUP || '17');
     var maxBounties = parseInt(config.MAX_ACTIVE_BOUNTIES) || 50;
     var autoRefreshInterval = parseInt(config.AUTO_REFRESH_INTERVAL) || 30;
     var minReward = parseInt(config.MIN_REWARD) || 1;
@@ -55,7 +55,7 @@ registerPlugin({
 
     // ===== SCRIPT INITIALIZATION =====
     event.on('load', function(ev) {
-        engine.log('Bounty Hunter v2.2.9 loaded');
+        engine.log('Bounty Hunter v2.2.10 loaded');
         engine.log('Configuration - BotName: ' + botName + ', AuthGroup: ' + authorizedGroupId + ', DisplayChannel: ' + displayChannelId);
 
         if (backend.isConnected()) {
@@ -130,7 +130,7 @@ registerPlugin({
         var subCommand = parts[0].toLowerCase();
 
         if (subCommand === 'test') {
-            invoker.chat('[BountyHunter] v2.2.9 test OK — authorized');
+            invoker.chat('[BountyHunter] v2.2.10 test OK — authorized');
             return;
         }
 
@@ -264,52 +264,68 @@ registerPlugin({
 
     function handleRemoveBounty(args, ev) {
         var invoker = ev.client;
+        var invokerName = invoker.name();
 
-        if (!isAdmin(invoker)) {
-            invoker.chat('[BountyHunter] Admin only');
-            return;
-        }
+        // Owners can remove their own bounties; admins can remove any
+        var isOwnerOrAdmin = function(bounty) {
+            return bounty.postedBy === invokerName || isAdmin(invoker);
+        };
 
         var searchTerm = args.join(' ');
+        var removed = null;
+        var removalReason = '';
 
         // Try numeric ranking first
         if (/^\d+$/.test(searchTerm)) {
             var index = parseInt(searchTerm, 10);
             if (index > 0 && index <= bountyBoard.length) {
-                var removed = bountyBoard.splice(index - 1, 1);
-                if (persistenceInitialized) {
-                    saveData();
+                var entry = bountyBoard[index - 1];
+                if (!isOwnerOrAdmin(entry)) {
+                    invoker.chat('[BountyHunter] You can only remove your own bounties');
+                    return;
                 }
-                updateChannelDescription();
-                invoker.chat('[BountyHunter] Removed: ' + removed[0].target + ' (ranking #' + index + ')');
-                return;
+                removed = bountyBoard.splice(index - 1, 1);
+                removalReason = 'ranking #' + index;
+            }
+        } else {
+            // Try exact target name match
+            for (var i = 0; i < bountyBoard.length; i++) {
+                if (bountyBoard[i].target.toLowerCase() === searchTerm.toLowerCase()) {
+                    var entry = bountyBoard[i];
+                    if (!isOwnerOrAdmin(entry)) {
+                        invoker.chat('[BountyHunter] You can only remove your own bounties');
+                        return;
+                    }
+                    removed = bountyBoard.splice(i, 1);
+                    removalReason = 'matched by name';
+                    break;
+                }
+            }
+
+            // Try prefix name match (e.g. "Ger" for Gerrit)
+            if (!removed) {
+                for (var i = 0; i < bountyBoard.length; i++) {
+                    if (bountyBoard[i].target.toLowerCase().indexOf(searchTerm.toLowerCase()) === 0) {
+                        var entry = bountyBoard[i];
+                        if (!isOwnerOrAdmin(entry)) {
+                            invoker.chat('[BountyHunter] You can only remove your own bounties');
+                            return;
+                        }
+                        removed = bountyBoard.splice(i, 1);
+                        removalReason = 'matched by name';
+                        break;
+                    }
+                }
             }
         }
 
-        // Try exact target name match
-        for (var i = 0; i < bountyBoard.length; i++) {
-            if (bountyBoard[i].target.toLowerCase() === searchTerm.toLowerCase()) {
-                var removed = bountyBoard.splice(i, 1);
-                if (persistenceInitialized) {
-                    saveData();
-                }
-                updateChannelDescription();
-                invoker.chat('[BountyHunter] Removed: ' + removed[0].target + ' (matched by name)');
-                return;
+        if (removed) {
+            if (persistenceInitialized) {
+                saveData();
             }
-        }
-
-        // Try prefix name match (e.g. "Ger" for Gerrit)
-        for (var i = 0; i < bountyBoard.length; i++) {
-            if (bountyBoard[i].target.toLowerCase().indexOf(searchTerm.toLowerCase()) === 0) {
-                var removed = bountyBoard.splice(i, 1);
-                if (persistenceInitialized) {
-                    saveData();
-                }
-                updateChannelDescription();
-                invoker.chat('[BountyHunter] Removed: ' + removed[0].target + ' (matched by name)');
-                return;
-            }
+            updateChannelDescription();
+            invoker.chat('[BountyHunter] Removed: ' + removed[0].target + ' (' + removalReason + ')');
+            return;
         }
 
         invoker.chat('[BountyHunter] Bounty not found: "' + searchTerm + '". Use !bounty list to see all bounties.');
@@ -332,6 +348,15 @@ registerPlugin({
         invoker.chat('[BountyHunter] All bounties cleared');
     }
 
+// ===== DISPLAY FUNCTIONS =====
+    function formatGold(gold) {
+        var chests = Math.ceil(gold / 500);
+        if (chests > 0) {
+            return gold + ' gold (' + chests + ' chest' + (chests !== 1 ? 's' : '') + ')';
+        }
+        return gold + ' gold';
+    }
+
     function displayBountyList(ev) {
         var invoker = ev.client;
 
@@ -346,7 +371,8 @@ registerPlugin({
 
         for (var i = 0; i < bountyBoard.length; i++) {
             var b = bountyBoard[i];
-            msg += (i + 1) + '.    ' + b.target.padEnd(17) + '  ' + b.gold + '     ' + b.reason.substring(0, 40).padEnd(40) + ' (' + b.postedBy + ')\n';
+            var goldDisplay = formatGold(b.gold);
+            msg += (i + 1) + '.    ' + b.target.padEnd(17) + '  ' + goldDisplay + '  ' + b.reason.substring(0, 40).padEnd(40) + ' (' + b.postedBy + ')\n';
             if (b.claimedBy) {
                 msg += '       CLAIMED by ' + b.claimedBy + ' at ' + new Date(b.claimedAt).toLocaleString() + '\n';
             }
@@ -440,7 +466,7 @@ registerPlugin({
         for (var i = 0; i < bountyBoard.length && i < 15; i++) {
             var b = bountyBoard[i];
             var claimedStatus = b.claimedBy ? ' [CLAIMED]' : '';
-            bountyList += (i + 1) + '. ' + b.target + ' - ' + b.gold + ' gold' + claimedStatus + '\n';
+            bountyList += (i + 1) + '. ' + b.target + ' - ' + formatGold(b.gold) + claimedStatus + '\n';
         }
 
         if (bountyBoard.length === 0) {
