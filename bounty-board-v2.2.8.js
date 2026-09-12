@@ -53,6 +53,20 @@ registerPlugin({
         store = null;
     }
 
+    // ===== SCRIPT INITIALIZATION =====
+    event.on('load', function(ev) {
+        engine.log('Bounty Hunter v2.2.8 loaded');
+        engine.log('Configuration - BotName: ' + botName + ', AuthGroup: ' + authorizedGroupId + ', DisplayChannel: ' + displayChannelId);
+
+        if (backend.isConnected()) {
+            initialize();
+        } else {
+            event.on('connect', function() {
+                initialize();
+            });
+        }
+    });
+
     function initialize() {
         engine.log('Initializing bounty hunter system...');
         loadPersistedData();
@@ -122,6 +136,23 @@ registerPlugin({
 
         if (subCommand === 'help') {
             displayHelp(ev);
+            return;
+        }
+
+        // Debug command — view store contents
+        if (subCommand === 'debug') {
+            var storeData = store ? store.getAll() : null;
+            if (storeData) {
+                var keys = Object.keys(storeData);
+                engine.log('DEBUG: Store has ' + keys.length + ' key(s): ' + keys.join(', '));
+                for (var k = 0; k < keys.length; k++) {
+                    engine.log('DEBUG: store["' + keys[k] + '"] = ' + JSON.stringify(storeData[keys[k]]).substring(0, 500));
+                }
+                invoker.chat('[BountyHunter] Debug: store has ' + keys.length + ' key(s) — check log');
+            } else {
+                engine.log('DEBUG: Store module not available');
+                invoker.chat('[BountyHunter] Debug: store unavailable');
+            }
             return;
         }
 
