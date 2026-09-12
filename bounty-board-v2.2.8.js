@@ -422,7 +422,7 @@ registerPlugin({
             bountyList += '... and ' + (bountyBoard.length - 15) + ' more';
         }
 
-        var description = '[center][b][color=#FFD700]BOUNTY BOARD[/color][/b][/center]\n[center]Gold Available: [color=#00FF00]' + totalGold + '[/color][/center]\n' + bountyList + '\n[/center]';
+        var description = '[center][b][color=#FFD700]BOUNTY BOARD[/color][/b][/center]\n[center]Gold Available: [color=#00FF00]' + totalGold + '[/color][/center]\n' + bountyList;
 
         try {
             channel.setDescription(description);
