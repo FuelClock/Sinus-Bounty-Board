@@ -403,20 +403,16 @@ registerPlugin({
         }
 
         var bountyList = '';
+        for (var i = 0; i < bountyBoard.length && i < 15; i++) {
+            var b = bountyBoard[i];
+            var claimedStatus = b.claimedBy ? ' [CLAIMED]' : '';
+            bountyList += (i + 1) + '. ' + b.target + ' - ' + b.gold + ' gold' + claimedStatus + '\n';
+        }
 
         if (bountyBoard.length === 0) {
             bountyList = '[center]No active bounties[/center]';
-        } else {
-            bountyList = '[list]';
-            for (var i = 0; i < bountyBoard.length && i < 15; i++) {
-                var b = bountyBoard[i];
-                var claimedStatus = b.claimedBy ? ' [CLAIMED]' : '';
-                bountyList += '[*]' + (i + 1) + '. ' + escapeBBCode(b.target) + ' - ' + b.gold + ' gold' + claimedStatus;
-            }
-            if (bountyBoard.length > 15) {
-                bountyList += '[*]... and ' + (bountyBoard.length - 15) + ' more';
-            }
-            bountyList += '[/list]';
+        } else if (bountyBoard.length > 15) {
+            bountyList += '... and ' + (bountyBoard.length - 15) + ' more';
         }
 
         var description = '[center][b][color=#FFD700]BOUNTY BOARD[/color][/b][/center]' +
@@ -428,10 +424,6 @@ registerPlugin({
         } catch (e) {
             engine.log('ERROR updating channel: ' + e.message);
         }
-    }
-
-    function escapeBBCode(value) {
-        return String(value).replace(/</g, '&lt;').replace(/>/g, '&gt;');
     }
 
     function startAutoRefresh() {
