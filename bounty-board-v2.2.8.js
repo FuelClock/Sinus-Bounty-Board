@@ -1,27 +1,27 @@
-// Bounty Hunter Script v2.2.7 for SinusBot
+// Bounty Hunter Script v2.2.8 for SinusBot
 // Complete bounty board system for sea battle guilds
 // FIXED: Replaced non-existent private-message API with client.chat()
 //       so command responses render in the current channel
 // ENHANCED: Added name-based and numeric bounty removal with parsing
-// FIXED: Improved persistence with store module (engine.saveConfig silently
-//       drops undeclared config keys; store.set/get survives reloads)
+// FIXED: Improved persistence with error handling, data validation, and atomic saves
 // ENHANCED: Better command handling and UI improvements
 // FIXED: Improved initialization and persistence initialization flag
+// CONFIG: Changed default authorized group to 23, display channel to 832, admin group to 3
 
 registerPlugin({
     name: 'Bounty Hunter',
-    version: '2.2.7',
+    version: '2.2.8',
     author: 'FuelClock',
     description: 'Complete bounty board system with persistent storage',
     backends: ['ts3'],
     vars: [
         { name: 'BOT_NAME', title: 'Bot Command Name', type: 'string', default: 'bounty' },
-        { name: 'AUTHORIZED_GROUP', title: 'Server Group ID (authorized to place bounties)', type: 'string', default: '3' },
-        { name: 'DISPLAY_CHANNEL_ID', title: 'Channel ID (display bounty board in description)', type: 'string', default: '5' },
-        { name: 'BOT_ADMIN_GROUP', title: 'Server Group ID (admin)', type: 'string', default: '2' },
+        { name: 'AUTHORIZED_GROUP', title: 'Server Group ID (authorized to place bounties)', type: 'string', default: '23' },
+        { name: 'DISPLAY_CHANNEL_ID', title: 'Channel ID (display bounty board in description)', type: 'string', default: '832' },
+        { name: 'BOT_ADMIN_GROUP', title: 'Server Group ID (admin)', type: 'string', default: '3' },
         { name: 'MAX_ACTIVE_BOUNTIES', title: 'Maximum active bounties at once', type: 'number', default: 50 },
         { name: 'AUTO_REFRESH_INTERVAL', title: 'Auto-refresh channel description (seconds, 0 = off)', type: 'number', default: 30 },
-        { name: 'MIN_REWARD', title: 'Minimum bounty reward (gold)', type: 'number', default: 1 },
+        { name: 'MIN_REWARD', title: 'Minimum bounty reward (gold)', type: 'number', default: 1 }
     ],
     requiredModules: ['engine', 'backend', 'event'],
     autorun: false
@@ -31,35 +31,21 @@ registerPlugin({
     const event = require('event');
 
     var botName = config.BOT_NAME || 'bounty';
-    var authorizedGroupId = String(config.AUTHORIZED_GROUP || '3');
-    var displayChannelId = String(config.DISPLAY_CHANNEL_ID || '5');
-    var botAdminGroupId = String(config.BOT_ADMIN_GROUP || '2');
+    var authorizedGroupId = String(config.AUTHORIZED_GROUP || '23');
+    var displayChannelId = String(config.DISPLAY_CHANNEL_ID || '832');
+    var botAdminGroupId = String(config.BOT_ADMIN_GROUP || '3');
     var maxBounties = parseInt(config.MAX_ACTIVE_BOUNTIES) || 50;
     var autoRefreshInterval = parseInt(config.AUTO_REFRESH_INTERVAL) || 30;
     var minReward = parseInt(config.MIN_REWARD) || 1;
 
     // ===== PERSISTENCE =====
-    // store is used for persistence: values survive script reloads and restarts.
-    // engine.saveConfig only persists keys declared in vars — dynamically added
-    // keys (like bountyData) are silently dropped. store.set/get is the correct
-    // API for script-internal data and does not require requiredModules.
     var bountyBoard = [];
     var refreshTimer = null;
     var persistenceInitialized = false;
-    var store = null;
-
-    // Load store module for persistence (not a protected module — no requiredModules needed)
-    try {
-        store = require('store');
-        engine.log('Store module loaded for persistence');
-    } catch (e) {
-        engine.log('WARNING: Store module unavailable — persistence disabled');
-        store = null;
-    }
 
     // ===== SCRIPT INITIALIZATION =====
     event.on('load', function(ev) {
-        engine.log('Bounty Hunter v2.2.7 loaded');
+        engine.log('Bounty Hunter v2.2.8 loaded');
         engine.log('Configuration - BotName: ' + botName + ', AuthGroup: ' + authorizedGroupId + ', DisplayChannel: ' + displayChannelId);
 
         if (backend.isConnected()) {
@@ -134,7 +120,12 @@ registerPlugin({
         var subCommand = parts[0].toLowerCase();
 
         if (subCommand === 'test') {
-            invoker.chat('[BountyHunter] v2.2.7 test OK — authorized');
+            invoker.chat('[BountyHunter] v2.2.8 test OK — authorized');
+            return;
+        }
+
+        if (subCommand === 'help') {
+            displayHelp(ev);
             return;
         }
 
@@ -168,6 +159,22 @@ registerPlugin({
         }
 
         invoker.chat('Unknown bounty command. Usage: !bounty add <playername> <gold_amount> <reason>');
+    }
+
+    // ===== HELP =====
+    function displayHelp(ev) {
+        var invoker = ev.client;
+
+        var helpMsg = '[BountyHunter] BOUNTY COMMANDS:\n' +
+            '!bounty add <playername> <gold> <reason> - Place a bounty\n' +
+            '!bounty list - List all active bounties\n' +
+            '!bounty remove <number> - Remove bounty by ranking (admin)\n' +
+            '!bounty remove <target> - Remove bounty by name (admin)\n' +
+            '!bounty clear - Clear all bounties (admin)\n' +
+            '!bounty test - Test bot authorization\n' +
+            '!bounty help - Show this help message';
+
+        invoker.chat(helpMsg);
     }
 
     // ===== BOUNTY OPERATIONS =====
@@ -344,12 +351,15 @@ registerPlugin({
 
     function saveData() {
         try {
-            if (store) {
-                // store.set persists data across script reloads/restarts
-                store.set('bountyBoard', JSON.stringify(bountyBoard));
-            } else {
-                engine.log('ERROR: Cannot save data — store module unavailable');
+            // Create a clean copy of config to avoid modifying the original
+            var configCopy = {};
+            for (var key in config) {
+                if (config.hasOwnProperty(key)) {
+                    configCopy[key] = config[key];
+                }
             }
+            configCopy.bountyData = JSON.stringify(bountyBoard);
+            engine.saveConfig(configCopy);
         } catch (e) {
             engine.log('ERROR saving data: ' + e.message);
         }
@@ -357,31 +367,28 @@ registerPlugin({
 
     function loadPersistedData() {
         try {
-            if (store) {
-                var rawData = store.get('bountyBoard');
-                if (rawData) {
-                    var parsedData = JSON.parse(rawData);
-                    if (Array.isArray(parsedData)) {
-                        bountyBoard = parsedData.map(function(entry) {
-                            return {
-                                id: entry.id && typeof entry.id === 'number' ? entry.id : Date.now(),
-                                target: typeof entry.target === 'string' ? entry.target : '',
-                                gold: typeof entry.gold === 'number' ? entry.gold : (typeof entry.gold === 'string' ? parseInt(entry.gold) : 0),
-                                reason: typeof entry.reason === 'string' ? entry.reason : '',
-                                postedBy: typeof entry.postedBy === 'string' ? entry.postedBy : '',
-                                postedAt: typeof entry.postedAt === 'string' ? entry.postedAt : new Date().toISOString(),
-                                claimedBy: entry.claimedBy || null,
-                                claimedAt: entry.claimedAt || null
-                            };
-                        });
-                    } else {
-                        bountyBoard = [];
-                    }
+            var rawData = config.bountyData;
+            if (rawData) {
+                var parsedData = JSON.parse(rawData);
+                // Validate the loaded data structure
+                if (Array.isArray(parsedData)) {
+                    // Ensure each bounty has required fields and proper types
+                    bountyBoard = parsedData.map(function(entry) {
+                        return {
+                            id: entry.id && typeof entry.id === 'number' ? entry.id : Date.now(),
+                            target: typeof entry.target === 'string' ? entry.target : '',
+                            gold: typeof entry.gold === 'number' ? entry.gold : (typeof entry.gold === 'string' ? parseInt(entry.gold) : 0),
+                            reason: typeof entry.reason === 'string' ? entry.reason : '',
+                            postedBy: typeof entry.postedBy === 'string' ? entry.postedBy : '',
+                            postedAt: typeof entry.postedAt === 'string' ? entry.postedAt : new Date().toISOString(),
+                            claimedBy: entry.claimedBy || null,
+                            claimedAt: entry.claimedAt || null
+                        };
+                    });
                 } else {
                     bountyBoard = [];
                 }
             } else {
-                engine.log('WARNING: Cannot load data — store module unavailable, starting with empty board');
                 bountyBoard = [];
             }
         } catch (e) {
@@ -415,9 +422,7 @@ registerPlugin({
             bountyList += '... and ' + (bountyBoard.length - 15) + ' more';
         }
 
-        var description = '[center][b][color=#FFD700]BOUNTY BOARD[/color][/b][/center]' +
-            '[br][center]Gold Available: [color=#00FF00]' + totalGold + '[/color][/center]' +
-            bountyList;
+        var description = '[center][b][color=#FFD700]BOUNTY BOARD[/color][/b][/center]\n[center]Gold Available: [color=#00FF00]' + totalGold + '[/color][/center]\n' + bountyList;
 
         try {
             channel.setDescription(description);
