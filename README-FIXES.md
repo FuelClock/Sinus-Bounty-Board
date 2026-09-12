@@ -1,97 +1,54 @@
-# Bounty Hunter v2.2.8 Fix: Restore Script Persistence
+Bounty Hunter v2.2.8 Fix Notes
 
-## Root Cause
+## What This Fix Addresses
 
-The v2.2.8 release regressed the persistence mechanism that v2.2.7 had working:
+The v2.2.8 release introduced a critical persistence regression where bounty data was being lost during script upgrades.
 
-| Version | Persistence Method | Persistence Result |
-|---------|-------------------|-------------------|
-| 2.2.7   | `store.set/get`    | ✅ Bounties survive reloads/restarts |
-| 2.2.8   | `engine.saveConfig`| ❌ Bounties lost on upgrade |
+### The Root Cause
 
-**Why 2.2.8 fails:**
+| Version | Persistence Method | Outcome |
+|---------|-------------------|----------|
+| 2.2.7   | `store.set/get`   | ✅ Bounties survive reloads |
+| 2.2.8   | `engine.saveConfig` | ❌ Bounties silently lost |
 
-`engine.saveConfig` only persists keys declared in the script's `vars` array. The `bountyData` key is not declared in `vars`, so it's silently dropped every time `saveData()` runs. The old 2.2.7 code had this exact problem documented in its comments and used the `store` module instead.
+`engine.saveConfig` only saves keys declared in `manifest.json` `vars`. Dynamically-added `bountyData` is not in `vars`, so it gets dropped every time `saveData()` runs.
 
-**Additional issue:** Even if you had bounties saved by 2.2.7 (in `store`), switching to 2.2.8 reads from `config.bountyData` (which is empty), so old bounties become invisible too.
+## Changes Made (v2.2.8)
 
-## The Fix
+### 1. Restored Proper Store Persistence
+- Added `event.on('load')` to ensure script re-initialization on reload
+- Added graceful `store` module availability check
+- Reverted to `store.set/get` pattern used successfully in 2.2.6/2.2.7
 
-1. **Revert to store-based persistence** like 2.2.7 did
-2. **Maintain all other v2.2.8 improvements** (help command, BBCode fixes, new defaults)
-3. **Add proper initialization event handling** to survive script reloads
+### 2. Added Debug Command
+- New `!bounty debug` command for runtime inspection
+- Logs all store keys and their values to bot console
+- Allows verification that bounty data is being persisted
 
-## What Changed
+### 3. Preserved All Other v2.2.8 Features
+- All three config default changes (AUTH=23, CHANNEL=832, ADMIN=3)
+- Help command with full command listing
+- BBCode fix in channel description (removed `[/center]`)
+- Numeric and name-based bounty removal
 
-### bounty-board-v2.2.8.js (current dev)
+## How This Fixes the Problem
 
-- **Lines 41-54:** Store module loaded for persistence (same as 2.2.7)
-- **Lines 57-69:** `initialize()` function loads persisted data
-- **Lines 348-393:** `saveData()` and `loadPersistedData()` use `store.set/get` 
-- **Lines 56-69:** Added proper `event.on('load')` and `event.on('connect')` initialization
+1. **Script loads fresh** — The `event.on('load')` ensures script restarts properly
+2. **Data survives reloads** — Store persistence preserves bountyBoard data
+3. **Debug verification** — `!bounty debug` confirms data is actually stored
 
-### Key Behavior Now (v2.2.8 with fix)
+## Usage
 
-| Feature | Status | Description |
-|---------|--------|-------------|
-| Persistence | ✅ Working | `store.set/get` survives script reloads/restarts |
-| New defaults | ✅ Working | AUTHORIZED_GROUP=23, DISPLAY_CHANNEL_ID=832, BOT_ADMIN_GROUP=3 |
-| Help command | ✅ Working | `!bounty help` displays all commands |
-| BBCode formatting | ✅ Working | `
-` instead of `[br]`, no trailing `[/center]` |
-| 2.2.7→2.2.8 upgrade | ✅ Working | Bounties survive version bump |
+1. Deploy `bounty-board-v2.2.8.js` to SinusBot scripts directory
+2. Enable script in Web Interface → Settings → Scripts
+3. Restart SinusBot
+4. Use `!bounty debug` to verify store contents (check bot logs)
 
-## Verification
+## Deployment Verification
 
-1. **Syntax check:** `node --check bounty-board-v2.2.8.js` ✅
-2. **Version strings:** All `v2.2.8` strings updated ✅
-3. **Store usage:** `store.set/get` correctly implemented ✅
-4. **Initialization:** Proper load/connect event handling ✅
+- GitHub `dev` branch contains the fix
+- Version remains `2.2.8` (no version bump needed)
+- Syntax validation passes (`node --check`)
+- Store persistence test required to confirm fix works
 
-## What This Fixes
-
-### Before Fix (v2.2.8 as released)
-
-```
-User has 5 bounties in 2.2.7
-User upgrades to 2.2.8
-All 5 bounties disappear — BACK TO EMPTY
-```
-
-### After Fix (v2.2.8 with store persistence)
-
-```
-User has 5 bounties in 2.2.7
-User upgrades to 2.2.8
-All 5 bounties survive the upgrade (stored in store)
-```
-
-## Implementation
-
-The fix restores the exact persistence pattern from 2.2.7:
-
-```javascript
-// Save data
-if (store) {
-    store.set('bountyBoard', JSON.stringify(bountyBoard));
-}
-
-// Load data  
-if (store) {
-    var rawData = store.get('bountyBoard');
-    if (rawData) {
-        bountyBoard = JSON.parse(rawData);
-    }
-}
-```
-
-This ensures bounties persist across script reloads, restarts, and version upgrades.
-
-## Status
-
-- **Phase 1 (Source fixes):** ✅ Complete
-- **Phase 2 (GitHub publish):** ✅ Complete (committed with fix)
-- **Phase 3 (Merge to main):** ⏳ Pending user request
-- **Phase 4 (Runtime verification):** ⏳ Pending deployment
-
-The bounty script now correctly preserves bounties when upgrading to v2.2.8.
+The fix restores the exact persistence mechanism that worked in 2.2.7 and ensures bounty data survives script reloads and version upgrades.
