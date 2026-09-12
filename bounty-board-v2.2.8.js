@@ -124,6 +124,11 @@ registerPlugin({
             return;
         }
 
+        if (subCommand === 'help') {
+            displayHelp(ev);
+            return;
+        }
+
         // Enhanced remove command supports both numeric index and target name
         if (subCommand === 'remove') {
             if (parts.length < 2) {
@@ -154,6 +159,22 @@ registerPlugin({
         }
 
         invoker.chat('Unknown bounty command. Usage: !bounty add <playername> <gold_amount> <reason>');
+    }
+
+    // ===== HELP =====
+    function displayHelp(ev) {
+        var invoker = ev.client;
+
+        var helpMsg = '[BountyHunter] BOUNTY COMMANDS:\n' +
+            '!bounty add <playername> <gold> <reason> - Place a bounty\n' +
+            '!bounty list - List all active bounties\n' +
+            '!bounty remove <number> - Remove bounty by ranking (admin)\n' +
+            '!bounty remove <target> - Remove bounty by name (admin)\n' +
+            '!bounty clear - Clear all bounties (admin)\n' +
+            '!bounty test - Test bot authorization\n' +
+            '!bounty help - Show this help message';
+
+        invoker.chat(helpMsg);
     }
 
     // ===== BOUNTY OPERATIONS =====
