@@ -1,4 +1,4 @@
-// Bounty Hunter Script v2.2.8 for SinusBot
+// Bounty Hunter Script v2.2.9 for SinusBot
 // Complete bounty board system for sea battle guilds
 // FIXED: Replaced non-existent private-message API with client.chat()
 //       so command responses render in the current channel
@@ -10,7 +10,7 @@
 
 registerPlugin({
     name: 'Bounty Hunter',
-    version: '2.2.8',
+    version: '2.2.9',
     author: 'FuelClock',
     description: 'Complete bounty board system with persistent storage',
     backends: ['ts3'],
@@ -42,10 +42,20 @@ registerPlugin({
     var bountyBoard = [];
     var refreshTimer = null;
     var persistenceInitialized = false;
+    var store = null;
+
+    // Load store module for persistence (not a protected module — no requiredModules needed)
+    try {
+        store = require('store');
+        engine.log('Store module loaded for persistence');
+    } catch (e) {
+        engine.log('WARNING: Store module unavailable — persistence disabled');
+        store = null;
+    }
 
     // ===== SCRIPT INITIALIZATION =====
     event.on('load', function(ev) {
-        engine.log('Bounty Hunter v2.2.8 loaded');
+        engine.log('Bounty Hunter v2.2.9 loaded');
         engine.log('Configuration - BotName: ' + botName + ', AuthGroup: ' + authorizedGroupId + ', DisplayChannel: ' + displayChannelId);
 
         if (backend.isConnected()) {
@@ -120,12 +130,29 @@ registerPlugin({
         var subCommand = parts[0].toLowerCase();
 
         if (subCommand === 'test') {
-            invoker.chat('[BountyHunter] v2.2.8 test OK — authorized');
+            invoker.chat('[BountyHunter] v2.2.9 test OK — authorized');
             return;
         }
 
         if (subCommand === 'help') {
             displayHelp(ev);
+            return;
+        }
+
+        // Debug command — view store contents
+        if (subCommand === 'debug') {
+            var storeData = store ? store.getAll() : null;
+            if (storeData) {
+                var keys = Object.keys(storeData);
+                engine.log('DEBUG: Store has ' + keys.length + ' key(s): ' + keys.join(', '));
+                for (var k = 0; k < keys.length; k++) {
+                    engine.log('DEBUG: store["' + keys[k] + '"] = ' + JSON.stringify(storeData[keys[k]]).substring(0, 500));
+                }
+                invoker.chat('[BountyHunter] Debug: store has ' + keys.length + ' key(s) — check log');
+            } else {
+                engine.log('DEBUG: Store module not available');
+                invoker.chat('[BountyHunter] Debug: store unavailable');
+            }
             return;
         }
 
@@ -351,15 +378,12 @@ registerPlugin({
 
     function saveData() {
         try {
-            // Create a clean copy of config to avoid modifying the original
-            var configCopy = {};
-            for (var key in config) {
-                if (config.hasOwnProperty(key)) {
-                    configCopy[key] = config[key];
-                }
+            if (store) {
+                // store.set persists data across script reloads/restarts
+                store.set('bountyBoard', JSON.stringify(bountyBoard));
+            } else {
+                engine.log('ERROR: Cannot save data — store module unavailable');
             }
-            configCopy.bountyData = JSON.stringify(bountyBoard);
-            engine.saveConfig(configCopy);
         } catch (e) {
             engine.log('ERROR saving data: ' + e.message);
         }
@@ -367,28 +391,31 @@ registerPlugin({
 
     function loadPersistedData() {
         try {
-            var rawData = config.bountyData;
-            if (rawData) {
-                var parsedData = JSON.parse(rawData);
-                // Validate the loaded data structure
-                if (Array.isArray(parsedData)) {
-                    // Ensure each bounty has required fields and proper types
-                    bountyBoard = parsedData.map(function(entry) {
-                        return {
-                            id: entry.id && typeof entry.id === 'number' ? entry.id : Date.now(),
-                            target: typeof entry.target === 'string' ? entry.target : '',
-                            gold: typeof entry.gold === 'number' ? entry.gold : (typeof entry.gold === 'string' ? parseInt(entry.gold) : 0),
-                            reason: typeof entry.reason === 'string' ? entry.reason : '',
-                            postedBy: typeof entry.postedBy === 'string' ? entry.postedBy : '',
-                            postedAt: typeof entry.postedAt === 'string' ? entry.postedAt : new Date().toISOString(),
-                            claimedBy: entry.claimedBy || null,
-                            claimedAt: entry.claimedAt || null
-                        };
-                    });
+            if (store) {
+                var rawData = store.get('bountyBoard');
+                if (rawData) {
+                    var parsedData = JSON.parse(rawData);
+                    if (Array.isArray(parsedData)) {
+                        bountyBoard = parsedData.map(function(entry) {
+                            return {
+                                id: entry.id && typeof entry.id === 'number' ? entry.id : Date.now(),
+                                target: typeof entry.target === 'string' ? entry.target : '',
+                                gold: typeof entry.gold === 'number' ? entry.gold : (typeof entry.gold === 'string' ? parseInt(entry.gold) : 0),
+                                reason: typeof entry.reason === 'string' ? entry.reason : '',
+                                postedBy: typeof entry.postedBy === 'string' ? entry.postedBy : '',
+                                postedAt: typeof entry.postedAt === 'string' ? entry.postedAt : new Date().toISOString(),
+                                claimedBy: entry.claimedBy || null,
+                                claimedAt: entry.claimedAt || null
+                            };
+                        });
+                    } else {
+                        bountyBoard = [];
+                    }
                 } else {
                     bountyBoard = [];
                 }
             } else {
+                engine.log('WARNING: Cannot load data — store module unavailable, starting with empty board');
                 bountyBoard = [];
             }
         } catch (e) {
