@@ -197,6 +197,11 @@ registerPlugin({
             return;
         }
 
+        if (subCommand === 'complete') {
+            handleCompleteBounty(ev);
+            return;
+        }
+
         invoker.chat('Unknown bounty command. Usage: !bounty add <playername> <gold_amount> <reason>');
     }
 
@@ -211,7 +216,8 @@ registerPlugin({
             '!bounty remove <target> - Remove bounty by name (admin)\n' +
             '!bounty clear - Clear all bounties (admin)\n' +
             '!bounty test - Test bot authorization\n' +
-            '!bounty help - Show this help message';
+            '!bounty help - Show this help message\n' +
+            '!bounty complete - Mark bounty as complete (poster only)';
 
         invoker.chat(helpMsg);
     }
@@ -354,7 +360,7 @@ registerPlugin({
         }
 
         // Poke claimant with evidence submission instructions
-        var pokeMessage = '[BountyHunter] Claim pending on ' + foundBounty.target + '. Upload your screenshot or video evidence to the file browser in the bounty board channel, named: ' + foundBounty.target;
+        var pokeMessage = '[BountyHunter] Claim pending on ' + foundBounty.target + '. Upload your screenshot or video evidence to the file browser in the bounty board channel, named: ' + foundBounty.target + '. If the bounty poster is not online in Teamspeak, send a private message to them ingame to notify them about the claim.';
         try {
             invoker.poke(pokeMessage);
         } catch (e) {
@@ -362,8 +368,38 @@ registerPlugin({
             engine.log('Bounty claim: Failed to poke claimant ' + invoker.name() + ': ' + e.message);
         }
 
-        // Assign file access channel group temporarily
-        var displayChannel = backend.getChannelByID(displayChannelId);
+        // ===== FILE ACCESS GROUP ASSIGNMENT =====
+        // Assign persistent file access group to original poster (remains until bounty is completed)
+        if (originalPoster && originalPoster !== invoker.name()) {
+            try {
+                var allClients = backend.getClients();
+                for (var ci = 0; ci < allClients.length; ci++) {
+                    if (allClients[ci].name() === originalPoster) {
+                        var client = allClients[ci];
+                        if (displayChannel) {
+                            var channelGroups = backend.getChannelGroups();
+                            var fileAccessGroup = null;
+                            for (var i = 0; i < channelGroups.length; i++) {
+                                if (String(channelGroups[i].id()) === fileAccessGroupId) {
+                                    fileAccessGroup = channelGroups[i];
+                                    break;
+                                }
+                            }
+
+                            if (fileAccessGroup) {
+                                displayChannel.setChannelGroup(client, fileAccessGroup);
+                                engine.log('Bounty claim: Assigned file access group ' + fileAccessGroupId + ' to original poster ' + originalPoster + ' for bounty ' + foundBounty.target);
+                            }
+                        }
+                        break;
+                    }
+                }
+            } catch (e) {
+                engine.log('Bounty claim: Failed to assign file access group to original poster ' + originalPoster + ': ' + e.message);
+            }
+        }
+
+        // Grant claimant file access group temporarily (5 minutes)
         if (displayChannel) {
             try {
                 var channelGroups = backend.getChannelGroups();
@@ -382,7 +418,7 @@ registerPlugin({
 
                     // Assign file access group
                     displayChannel.setChannelGroup(invoker, fileAccessGroup);
-                    engine.log('Bounty claim: Assigned file access group ' + fileAccessGroupId + ' to ' + invoker.name());
+                    engine.log('Bounty claim: Assigned file access group ' + fileAccessGroupId + ' to claimant ' + invoker.name() + ' for bounty ' + foundBounty.target);
 
                     // Set timer to remove file access group after 5 minutes
                     var timerKey = invoker.name() + ':' + displayChannelId;
@@ -417,6 +453,95 @@ registerPlugin({
         }
 
         invoker.chat('[BountyHunter] Claim pending on ' + foundBounty.target + '. Upload your screenshot or video evidence to the file browser in the bounty board channel, named: ' + foundBounty.target + '.');
+    }
+
+    function handleCompleteBounty(ev) {
+        var invoker = ev.client;
+        var invokerName = invoker.name();
+
+        // Find bounties with claimPending where the invoker is the original poster
+        var pendingBounties = [];
+        for (var i = 0; i < bountyBoard.length; i++) {
+            if (bountyBoard[i].claimPending && bountyBoard[i].postedBy === invokerName) {
+                pendingBounties.push(bountyBoard[i]);
+            }
+        }
+
+        if (pendingBounties.length === 0) {
+            invoker.chat('[BountyHunter] You have no pending claims to complete');
+            return;
+        }
+
+        if (pendingBounties.length === 1) {
+            var bounty = pendingBounties[0];
+            completeBounty(bounty);
+            return;
+        }
+
+        // Multiple pending bounties - list them
+        var msg = '[BountyHunter] Pending claims:\n';
+        for (var j = 0; j < pendingBounties.length; j++) {
+            var b = pendingBounties[j];
+            msg += (j + 1) + '. ' + b.target + ' - ' + formatGold(b.gold) + ' gold\n';
+        }
+        msg += 'Usage: !bounty complete <number>';
+        invoker.chat(msg);
+    }
+
+    function completeBounty(bounty) {
+        var bountyIndex = -1;
+        for (var i = 0; i < bountyBoard.length; i++) {
+            if (bountyBoard[i] === bounty) {
+                bountyIndex = i;
+                break;
+            }
+        }
+
+        if (bountyIndex === -1) {
+            engine.log('ERROR: Could not find bounty in completeBounty');
+            return;
+        }
+
+        var claimant = bounty.claimedBy;
+        var target = bounty.target;
+
+        // Remove claim pending status
+        bounty.claimPending = false;
+        bounty.claimedBy = null;
+        bounty.claimedAt = null;
+
+        // Remove file access group from claimant if online
+        if (claimant) {
+            try {
+                var allClients = backend.getClients();
+                for (var ci = 0; ci < allClients.length; ci++) {
+                    if (allClients[ci].name() === claimant) {
+                        if (displayChannel) {
+                            displayChannel.setChannelGroup(allClients[ci], backend.getChannelGroupByID(fileAccessGroupId));
+                            engine.log('Bounty complete: Removed file access group from ' + claimant);
+                        }
+                        break;
+                    }
+                }
+            } catch (e) {
+                engine.log('Bounty complete: Failed to remove file access group from ' + claimant + ': ' + e.message);
+            }
+        }
+
+        // Clear any pending timer for the claimant
+        var claimantTimerKey = claimant + ':' + displayChannelId;
+        if (bountyClaimTimers[claimantTimerKey]) {
+            clearTimeout(bountyClaimTimers[claimantTimerKey].expiryTimer);
+            delete bountyClaimTimers[claimantTimerKey];
+        }
+
+        // Persist
+        if (persistenceInitialized) {
+            saveData();
+        }
+        updateChannelDescription();
+
+        invoker.chat('[BountyHunter] Bounty on ' + target + ' marked complete');
     }
 
     function handleRemoveBounty(args, ev) {
