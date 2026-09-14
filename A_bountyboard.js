@@ -289,6 +289,7 @@ registerPlugin({
     function handleClaimBounty(parts, ev) {
         var invoker = ev.client;
         var targetName = parts.join(' ');
+        var displayChannel = backend.getChannelByID(displayChannelId);
         var foundBounty = null;
         var bountyIndex = -1;
 
