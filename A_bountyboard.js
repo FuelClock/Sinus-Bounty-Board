@@ -336,17 +336,25 @@ registerPlugin({
         // Update the channel description to show CLAIM PENDING status
         updateChannelDescription();
 
-        // Notify the claimant via direct message (fallback)
-        var claimMsg = '[BountyHunter] Claim pending on "' + foundBounty.target + '". Check PM for instructions.';
-        try {
-            invoker.poke(claimMsg);
-        } catch (e) {
-            // Poke not available, use chat instead
-            invoker.chat(claimMsg);
+        // Notify the original poster if they are online
+        var originalPoster = foundBounty.postedBy;
+        if (originalPoster && originalPoster !== invoker.name()) {
+            try {
+                var allClients = backend.getClients();
+                for (var ci = 0; ci < allClients.length; ci++) {
+                    if (allClients[ci].name() === originalPoster) {
+                        allClients[ci].poke('[BountyHunter] A claim has been filed on the bounty "' + foundBounty.target + '" by ' + invoker.name() + '.');
+                        engine.log('Bounty claim: Notified original poster ' + originalPoster + ' about claim on ' + foundBounty.target);
+                        break;
+                    }
+                }
+            } catch (e) {
+                engine.log('Bounty claim: Failed to notify original poster ' + originalPoster + ': ' + e.message);
+            }
         }
 
         // Poke claimant with evidence submission instructions
-        var pokeMessage = '[BountyHunter] Claim pending on ' + foundBounty.target + '. Submit evidence screenshot to the file browser in the bounty board channel, rename screenshot to: ' + foundBounty.target;
+        var pokeMessage = '[BountyHunter] Claim pending on ' + foundBounty.target + '. Upload your screenshot or video evidence to the file browser in the bounty board channel, named: ' + foundBounty.target;
         try {
             invoker.poke(pokeMessage);
         } catch (e) {
@@ -408,7 +416,7 @@ registerPlugin({
             invoker.chat('[BountyHunter] Display channel not found');
         }
 
-        invoker.chat('[BountyHunter] Claim pending on ' + foundBounty.target + '. Check PM for evidence submission instructions.');
+        invoker.chat('[BountyHunter] Claim pending on ' + foundBounty.target + '. Upload your screenshot or video evidence to the file browser in the bounty board channel, named: ' + foundBounty.target + '.');
     }
 
     function handleRemoveBounty(args, ev) {
