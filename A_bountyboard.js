@@ -137,6 +137,19 @@ registerPlugin({
         if (subCommand === 'help') {
             displayHelp(ev);
             return;
+
+        // Claim a bounty you have killed
+        if (subCommand === 'claim') {
+            if (parts.length < 2) {
+                invoker.chat('Usage: !bounty claim <target>');
+                return;
+            }
+            handleClaimBounty(parts.slice(1), ev);
+            return;
+        }
+
+            displayHelp(ev);
+            return;
         }
 
         // Debug command — view store contents
