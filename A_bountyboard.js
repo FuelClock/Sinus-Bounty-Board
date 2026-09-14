@@ -356,7 +356,7 @@ registerPlugin({
                 var allClients = backend.getClients();
                 for (var ci = 0; ci < allClients.length; ci++) {
                     if (allClients[ci].name() === originalPoster) {
-                        allClients[ci].poke('[BountyHunter] A claim has been filed on the bounty "' + foundBounty.target + '" by ' + invoker.name() + '.');
+                        allClients[ci].poke('[BountyHunter] Bounty claimed: ' + foundBounty.target);
                         engine.log('Bounty claim: Notified original poster ' + originalPoster + ' about claim on ' + foundBounty.target);
                         break;
                     }
@@ -367,12 +367,19 @@ registerPlugin({
         }
 
         // Poke claimant with evidence submission instructions
-        var pokeMessage = '[BountyHunter] Claim pending on ' + foundBounty.target + '. Upload your screenshot or video evidence to the file browser in the bounty board channel, named: ' + foundBounty.target + '. If the bounty poster is not online in Teamspeak, send a private message to them ingame to notify them about the claim.';
+        // Send short poke first (within TeamSpeak poke length limit)
         try {
-            invoker.poke(pokeMessage);
+            invoker.poke('[BountyHunter] Claim pending on ' + foundBounty.target + '. Check your DM.');
         } catch (e) {
-            // Poke failed, log it
             engine.log('Bounty claim: Failed to poke claimant ' + invoker.name() + ': ' + e.message);
+        }
+
+        // Send full instructions via channel chat
+        var dmMessage = '[BountyHunter] Instructions for ' + foundBounty.target + ': Upload your screenshot or video evidence to the file browser in the bounty board channel, named: ' + foundBounty.target + '. If the bounty poster is not online in Teamspeak, send a private message to them ingame to notify them about the claim.';
+        try {
+            invoker.chat(dmMessage);
+        } catch (e) {
+            engine.log('Bounty claim: Failed to send DM instructions to ' + invoker.name() + ': ' + e.message);
         }
 
         // ===== FILE ACCESS GROUP ASSIGNMENT =====
@@ -459,7 +466,6 @@ registerPlugin({
             invoker.chat('[BountyHunter] Display channel not found');
         }
 
-        invoker.chat('[BountyHunter] Claim pending on ' + foundBounty.target + '. Upload your screenshot or video evidence to the file browser in the bounty board channel, named: ' + foundBounty.target + '.');
     }
 
     function handleCompleteBounty(args, ev) {
