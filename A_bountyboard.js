@@ -37,9 +37,11 @@ registerPlugin({
     var maxBounties = parseInt(config.MAX_ACTIVE_BOUNTIES) || 50;
     var autoRefreshInterval = parseInt(config.AUTO_REFRESH_INTERVAL) || 30;
     var minReward = parseInt(config.MIN_REWARD) || 1;
+    var fileAccessGroupId = String(config.FILE_ACCESS_GROUP_ID || '10');
 
     // ===== PERSISTENCE =====
     var bountyBoard = [];
+    var bountyClaimTimers = {};
     var refreshTimer = null;
     var persistenceInitialized = false;
     var store = null;
@@ -137,6 +139,7 @@ registerPlugin({
         if (subCommand === 'help') {
             displayHelp(ev);
             return;
+        }
 
         // Claim a bounty you have killed
         if (subCommand === 'claim') {
@@ -145,10 +148,6 @@ registerPlugin({
                 return;
             }
             handleClaimBounty(parts.slice(1), ev);
-            return;
-        }
-
-            displayHelp(ev);
             return;
         }
 
@@ -273,6 +272,143 @@ registerPlugin({
         if (botClient) {
             botClient.chat(invoker.name() + ' placed a bounty on ' + playerName + ' for ' + goldAmount + ' gold!');
         }
+    }
+
+    function handleClaimBounty(parts, ev) {
+        var invoker = ev.client;
+        var targetName = parts.join(' ');
+        var foundBounty = null;
+        var bountyIndex = -1;
+
+        // Find the bounty with exact target name match
+        for (var i = 0; i < bountyBoard.length; i++) {
+            if (bountyBoard[i].target.toLowerCase() === targetName.toLowerCase()) {
+                foundBounty = bountyBoard[i];
+                bountyIndex = i;
+                break;
+            }
+        }
+
+        // Also check for exact match including claimedBy field
+        if (!foundBounty) {
+            for (var i = 0; i < bountyBoard.length; i++) {
+                if (bountyBoard[i].target.toLowerCase() === targetName.toLowerCase() && !bountyBoard[i].claimedBy) {
+                    foundBounty = bountyBoard[i];
+                    bountyIndex = i;
+                    break;
+                }
+            }
+        }
+
+        if (!foundBounty) {
+            invoker.chat('[BountyHunter] Bounty not found: ' + targetName);
+            return;
+        }
+
+        // Check if already fully claimed
+        if (foundBounty.claimedBy && !foundBounty.claimPending) {
+            invoker.chat('[BountyHunter] Bounty already claimed by ' + foundBounty.claimedBy);
+            return;
+        }
+
+        // Check if already claim pending by someone else
+        if (foundBounty.claimPending && foundBounty.claimedBy && foundBounty.claimedBy !== invoker.name()) {
+            invoker.chat('[BountyHunter] Bounty already claim pending by ' + foundBounty.claimedBy);
+            return;
+        }
+
+        // Check if this user already claimed this bounty
+        if (foundBounty.claimPending && foundBounty.claimedBy === invoker.name()) {
+            invoker.chat('[BountyHunter] You already have a pending claim on this bounty');
+            return;
+        }
+
+        // Mark as claim pending (NOT removed from board)
+        foundBounty.claimPending = true;
+        foundBounty.claimedBy = invoker.name();
+        foundBounty.claimedAt = new Date().toISOString();
+
+        // Persist the change
+        if (persistenceInitialized) {
+            saveData();
+        }
+
+        // Update the channel description to show CLAIM PENDING status
+        updateChannelDescription();
+
+        // Notify the claimant via direct message (fallback)
+        var claimMsg = '[BountyHunter] Claim pending on "' + foundBounty.target + '". Check PM for instructions.';
+        try {
+            invoker.poke(claimMsg);
+        } catch (e) {
+            // Poke not available, use chat instead
+            invoker.chat(claimMsg);
+        }
+
+        // Poke claimant with evidence submission instructions
+        var pokeMessage = '[BountyHunter] Claim pending on ' + foundBounty.target + '. Submit evidence screenshot to the file browser in the bounty board channel, rename screenshot to: ' + foundBounty.target;
+        try {
+            invoker.poke(pokeMessage);
+        } catch (e) {
+            // Poke failed, log it
+            engine.log('Bounty claim: Failed to poke claimant ' + invoker.name() + ': ' + e.message);
+        }
+
+        // Assign file access channel group temporarily
+        var displayChannel = backend.getChannelByID(displayChannelId);
+        if (displayChannel) {
+            try {
+                var channelGroups = displayChannel.getChannelGroups();
+                var fileAccessGroup = null;
+                for (var i = 0; i < channelGroups.length; i++) {
+                    if (String(channelGroups[i].id()) === fileAccessGroupId) {
+                        fileAccessGroup = channelGroups[i];
+                        break;
+                    }
+                }
+
+                if (fileAccessGroup) {
+                    // Get current channel group
+                    var currentChannelGroup = invoker.getChannelGroup();
+                    var originalChannelGroup = currentChannelGroup ? currentChannelGroup.id() : null;
+
+                    // Assign file access group
+                    displayChannel.setChannelGroup(invoker, fileAccessGroup);
+                    engine.log('Bounty claim: Assigned file access group ' + fileAccessGroupId + ' to ' + invoker.name());
+
+                    // Set timer to remove file access group after 5 minutes
+                    var timerKey = invoker.name() + ':' + displayChannelId;
+                    if (bountyClaimTimers[timerKey]) {
+                        clearTimeout(bountyClaimTimers[timerKey]);
+                    }
+
+                    bountyClaimTimers[timerKey] = setTimeout(function() {
+                        try {
+                            if (originalChannelGroup) {
+                                displayChannel.setChannelGroup(invoker, backend.getChannelGroupByID(originalChannelGroup));
+                            }
+                            delete bountyClaimTimers[timerKey];
+                            engine.log('Bounty claim: Removed file access group from ' + invoker.name() + ' after 5 minutes');
+                        } catch (e) {
+                            engine.log('Bounty claim: Error removing file access group: ' + e.message);
+                        }
+                    }, 5 * 60 * 1000); // 5 minutes
+
+                    invoker.chat('[BountyHunter] File access granted for 5 minutes');
+                } else {
+                    engine.log('Bounty claim: File access group ' + fileAccessGroupId + ' not found in channel');
+                    invoker.chat('[BountyHunter] File access group not found');
+                }
+            } catch (e) {
+                engine.log('Bounty claim: Error assigning file access group: ' + e.message);
+                invoker.chat('[BountyHunter] Error granting file access');
+            }
+        } else {
+            engine.log('Bounty claim: Display channel ' + displayChannelId + ' not found');
+            invoker.chat('[BountyHunter] Display channel not found');
+        }
+
+        invoker.chat('[BountyHunter] Claim pending on ' + foundBounty.target + '. Check PM for evidence submission instructions.');
     }
 
     function handleRemoveBounty(args, ev) {
