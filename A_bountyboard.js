@@ -358,7 +358,7 @@ registerPlugin({
         var displayChannel = backend.getChannelByID(displayChannelId);
         if (displayChannel) {
             try {
-                var channelGroups = displayChannel.getChannelGroups();
+                var channelGroups = backend.getChannelGroups();
                 var fileAccessGroup = null;
                 for (var i = 0; i < channelGroups.length; i++) {
                     if (String(channelGroups[i].id()) === fileAccessGroupId) {
