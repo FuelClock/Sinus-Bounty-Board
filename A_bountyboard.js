@@ -218,6 +218,7 @@ registerPlugin({
             '!bounty test - Test bot authorization\n' +
             '!bounty help - Show this help message\n' +
             '!bounty claim <target> - Claim a bounty you have killed\n' +
+            '!bounty debug - View store contents\n' +
             '!bounty complete - Mark bounty as complete (poster only)';
 
         invoker.chat(helpMsg);
