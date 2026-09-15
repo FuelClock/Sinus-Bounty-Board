@@ -822,7 +822,9 @@ registerPlugin({
             var b = bountyBoard[i];
             var goldDisplay = formatGold(b.gold);
             msg += (i + 1) + '.    ' + b.target.padEnd(17) + '  ' + goldDisplay + '  ' + b.reason.substring(0, 40).padEnd(40) + ' (' + b.postedBy + ')\n';
-            if (b.claimedBy) {
+            if (b.claimPending) {
+                msg += '       CLAIM PENDING by ' + b.claimedBy + ' at ' + new Date(b.claimedAt).toLocaleString() + '\n';
+            } else if (b.claimedBy) {
                 msg += '       CLAIMED by ' + b.claimedBy + ' at ' + new Date(b.claimedAt).toLocaleString() + '\n';
             }
         }
@@ -928,7 +930,7 @@ registerPlugin({
         var bountyList = '';
         for (var i = 0; i < bountyBoard.length && i < 15; i++) {
             var b = bountyBoard[i];
-            var claimedStatus = b.claimedBy ? ' [CLAIMED]' : '';
+            var claimedStatus = b.claimPending ? ' [CLAIM PENDING]' : (b.claimedBy ? ' [CLAIMED]' : '');
             bountyList += (i + 1) + '. ' + b.target + ' - ' + formatGold(b.gold) + claimedStatus + '\n';
         }
 
