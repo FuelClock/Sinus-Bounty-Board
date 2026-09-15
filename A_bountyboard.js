@@ -1,4 +1,4 @@
-// Bounty Hunter Script v2.2.11 for SinusBot
+// Bounty Hunter Script v2.3.0 for SinusBot
 // Complete bounty board system for sea battle guilds
 // FIXED: Replaced non-existent private-message API with client.chat()
 //       so command responses render in the current channel
@@ -10,7 +10,7 @@
 
 registerPlugin({
     name: 'Bounty Hunter',
-    version: '2.2.11',
+    version: '2.3.0',
     author: 'FuelClock',
     description: 'Complete bounty board system with persistent storage',
     backends: ['ts3'],
@@ -49,9 +49,9 @@ registerPlugin({
     // ===== STORE MODULE =====
     try {
         store = require('store');
-        engine.log('Store module loaded for persistence');
+        logMessage('Store module loaded for persistence', 3);
     } catch (e) {
-        engine.log('WARNING: Store module unavailable — persistence disabled');
+        logMessage('WARNING: Store module unavailable — persistence disabled', 2);
         store = null;
     }
 
@@ -68,13 +68,13 @@ registerPlugin({
             oklibAvailable = true;
         }
     } catch (e) {
-        engine.log('WARNING: OKlib could not be loaded: ' + e.message);
+        logMessage('WARNING: OKlib could not be loaded: ' + e.message, 2);
     }
 
     if (!oklibAvailable) {
-        engine.log('WARNING: OKlib 1.0.6+ unavailable — using manual implementations');
+        logMessage('WARNING: OKlib 1.0.6+ unavailable — using manual implementations', 2);
     } else {
-        engine.log('OKlib loaded successfully (v1.0.6+)');
+        logMessage('OKlib loaded successfully (v1.0.6+)', 3);
     }
 
     function logMessage(message, level) {
@@ -178,7 +178,7 @@ registerPlugin({
 
     // ===== SCRIPT INITIALIZATION =====
     event.on('load', function(ev) {
-        logMessage('Bounty Hunter v2.2.11 loaded');
+        logMessage('Bounty Hunter v2.3.0 loaded');
         logMessage('Configuration - BotName: ' + botName + ', AuthGroup: ' + authorizedGroupId + ', DisplayChannel: ' + displayChannelId);
 
         if (backend.isConnected()) {
@@ -212,7 +212,7 @@ registerPlugin({
 
         // Test command
         if (ev.text === '!btest' || ev.text.startsWith('!btest ')) {
-            engine.log('TEST COMMAND RECEIVED from ' + ev.client.name());
+            logMessage('TEST COMMAND RECEIVED from ' + ev.client.name(), 4);
             ev.client.chat('[BountyHunter] Test received — bounty hunter working');
             return;
         }
@@ -221,7 +221,7 @@ registerPlugin({
         var prefix = '!' + botName + ' ';
         if (ev.text.startsWith(prefix)) {
             var cmdText = ev.text.substring(prefix.length);
-            engine.log('BOUNTY COMMAND from ' + ev.client.name() + ': ' + cmdText);
+            logMessage('BOUNTY COMMAND from ' + ev.client.name() + ': ' + cmdText, 4);
             handleCommand(cmdText, ev);
         }
     });
@@ -243,7 +243,7 @@ registerPlugin({
         var subCommand = parts[0].toLowerCase();
 
         if (subCommand === 'test') {
-            invoker.chat('[BountyHunter] v2.2.11 test OK — authorized');
+            invoker.chat('[BountyHunter] v2.3.0 test OK — authorized');
             return;
         }
 
@@ -267,13 +267,13 @@ registerPlugin({
             var storeData = store ? store.getAll() : null;
             if (storeData) {
                 var keys = Object.keys(storeData);
-                engine.log('DEBUG: Store has ' + keys.length + ' key(s): ' + keys.join(', '));
+                logMessage('DEBUG: Store has ' + keys.length + ' key(s): ' + keys.join(', '), 4);
                 for (var k = 0; k < keys.length; k++) {
-                    engine.log('DEBUG: store["' + keys[k] + '"] = ' + JSON.stringify(storeData[keys[k]]).substring(0, 500));
+                    logMessage('DEBUG: store["' + keys[k] + '"] = ' + JSON.stringify(storeData[keys[k]]).substring(0, 500), 4);
                 }
                 invoker.chat('[BountyHunter] Debug: store has ' + keys.length + ' key(s) — check log');
             } else {
-                engine.log('DEBUG: Store module not available');
+                logMessage('DEBUG: Store module not available', 4);
                 invoker.chat('[BountyHunter] Debug: store unavailable');
             }
             return;
@@ -465,15 +465,13 @@ registerPlugin({
         if (originalPoster && originalPoster !== invoker.name()) {
             try {
                 var allClients = backend.getClients();
-                for (var ci = 0; ci < allClients.length; ci++) {
-                    if (allClients[ci].name() === originalPoster) {
-                        allClients[ci].poke('[BountyHunter] Bounty claimed: ' + foundBounty.target);
-                        engine.log('Bounty claim: Notified original poster ' + originalPoster + ' about claim on ' + foundBounty.target);
-                        break;
-                    }
+                var posterClients = searchClients(originalPoster, false, false, allClients);
+                if (posterClients.length > 0) {
+                    posterClients[0].poke('[BountyHunter] Bounty claimed: ' + foundBounty.target);
+                    logMessage('Bounty claim: Notified original poster ' + originalPoster + ' about claim on ' + foundBounty.target, 3);
                 }
             } catch (e) {
-                engine.log('Bounty claim: Failed to notify original poster ' + originalPoster + ': ' + e.message);
+                logMessage('Bounty claim: Failed to notify original poster ' + originalPoster + ': ' + e.message, 2);
             }
         }
 
@@ -482,7 +480,7 @@ registerPlugin({
         try {
             invoker.poke('[BountyHunter] Claim pending on ' + foundBounty.target + '. Check your DM.');
         } catch (e) {
-            engine.log('Bounty claim: Failed to poke claimant ' + invoker.name() + ': ' + e.message);
+            logMessage('Bounty claim: Failed to poke claimant ' + invoker.name() + ': ' + e.message, 2);
         }
 
         // Send full instructions via channel chat
@@ -490,7 +488,7 @@ registerPlugin({
         try {
             invoker.chat(dmMessage);
         } catch (e) {
-            engine.log('Bounty claim: Failed to send DM instructions to ' + invoker.name() + ': ' + e.message);
+            logMessage('Bounty claim: Failed to send DM instructions to ' + invoker.name() + ': ' + e.message, 2);
         }
 
         // ===== FILE ACCESS GROUP ASSIGNMENT =====
@@ -498,29 +496,27 @@ registerPlugin({
         if (originalPoster && originalPoster !== invoker.name()) {
             try {
                 var allClients = backend.getClients();
-                for (var ci = 0; ci < allClients.length; ci++) {
-                    if (allClients[ci].name() === originalPoster) {
-                        var client = allClients[ci];
-                        if (displayChannel) {
-                            var channelGroups = backend.getChannelGroups();
-                            var fileAccessGroup = null;
-                            for (var i = 0; i < channelGroups.length; i++) {
-                                if (String(channelGroups[i].id()) === fileAccessGroupId) {
-                                    fileAccessGroup = channelGroups[i];
-                                    break;
-                                }
-                            }
-
-                            if (fileAccessGroup) {
-                                displayChannel.setChannelGroup(client, fileAccessGroup);
-                                engine.log('Bounty claim: Assigned file access group ' + fileAccessGroupId + ' to original poster ' + originalPoster + ' for bounty ' + foundBounty.target);
+                var posterClients = searchClients(originalPoster, false, false, allClients);
+                if (posterClients.length > 0) {
+                    var client = posterClients[0];
+                    if (displayChannel) {
+                        var channelGroups = backend.getChannelGroups();
+                        var fileAccessGroup = null;
+                        for (var i = 0; i < channelGroups.length; i++) {
+                            if (String(channelGroups[i].id()) === fileAccessGroupId) {
+                                fileAccessGroup = channelGroups[i];
+                                break;
                             }
                         }
-                        break;
+
+                        if (fileAccessGroup) {
+                            displayChannel.setChannelGroup(client, fileAccessGroup);
+                            logMessage('Bounty claim: Assigned file access group ' + fileAccessGroupId + ' to original poster ' + originalPoster + ' for bounty ' + foundBounty.target, 3);
+                        }
                     }
                 }
             } catch (e) {
-                engine.log('Bounty claim: Failed to assign file access group to original poster ' + originalPoster + ': ' + e.message);
+                logMessage('Bounty claim: Failed to assign file access group to original poster ' + originalPoster + ': ' + e.message, 2);
             }
         }
 
@@ -543,7 +539,7 @@ registerPlugin({
 
                     // Assign file access group
                     displayChannel.setChannelGroup(invoker, fileAccessGroup);
-                    engine.log('Bounty claim: Assigned file access group ' + fileAccessGroupId + ' to claimant ' + invoker.name() + ' for bounty ' + foundBounty.target);
+                    logMessage('Bounty claim: Assigned file access group ' + fileAccessGroupId + ' to claimant ' + invoker.name() + ' for bounty ' + foundBounty.target, 3);
 
                     // Set timer to remove file access group after 5 minutes
                     var timerKey = invoker.name() + ':' + displayChannelId;
@@ -557,23 +553,23 @@ registerPlugin({
                                 displayChannel.setChannelGroup(invoker, backend.getChannelGroupByID(originalChannelGroup));
                             }
                             delete bountyClaimTimers[timerKey];
-                            engine.log('Bounty claim: Removed file access group from ' + invoker.name() + ' after 5 minutes');
+                            logMessage('Bounty claim: Removed file access group from ' + invoker.name() + ' after 5 minutes', 3);
                         } catch (e) {
-                            engine.log('Bounty claim: Error removing file access group: ' + e.message);
+                            logMessage('Bounty claim: Error removing file access group: ' + e.message, 1);
                         }
                     }, 5 * 60 * 1000); // 5 minutes
 
                     invoker.chat('[BountyHunter] File access granted for 5 minutes');
                 } else {
-                    engine.log('Bounty claim: File access group ' + fileAccessGroupId + ' not found in channel');
+                    logMessage('Bounty claim: File access group ' + fileAccessGroupId + ' not found in channel', 2);
                     invoker.chat('[BountyHunter] File access group not found');
                 }
             } catch (e) {
-                engine.log('Bounty claim: Error assigning file access group: ' + e.message);
+                logMessage('Bounty claim: Error assigning file access group: ' + e.message, 1);
                 invoker.chat('[BountyHunter] Error granting file access');
             }
         } else {
-            engine.log('Bounty claim: Display channel ' + displayChannelId + ' not found');
+            logMessage('Bounty claim: Display channel ' + displayChannelId + ' not found', 2);
             invoker.chat('[BountyHunter] Display channel not found');
         }
 
@@ -761,10 +757,10 @@ registerPlugin({
                 // store.set persists data across script reloads/restarts
                 store.set('bountyBoard', JSON.stringify(bountyBoard));
             } else {
-                engine.log('ERROR: Cannot save data — store module unavailable');
+                logMessage('ERROR: Cannot save data — store module unavailable', 1);
             }
         } catch (e) {
-            engine.log('ERROR saving data: ' + e.message);
+            logMessage('ERROR saving data: ' + e.message, 1);
         }
     }
 
@@ -794,11 +790,11 @@ registerPlugin({
                     bountyBoard = [];
                 }
             } else {
-                engine.log('WARNING: Cannot load data — store module unavailable, starting with empty board');
+                logMessage('WARNING: Cannot load data — store module unavailable, starting with empty board', 2);
                 bountyBoard = [];
             }
         } catch (e) {
-            engine.log('ERROR loading persisted data: ' + e.message);
+            logMessage('ERROR loading persisted data: ' + e.message, 1);
             bountyBoard = [];
         }
     }
@@ -806,7 +802,7 @@ registerPlugin({
     function updateChannelDescription() {
         var channel = backend.getChannelByID(displayChannelId);
         if (!channel) {
-            engine.log('ERROR: Display channel ' + displayChannelId + ' not found');
+            logMessage('ERROR: Display channel ' + displayChannelId + ' not found', 1);
             return;
         }
 
@@ -833,7 +829,7 @@ registerPlugin({
         try {
             channel.setDescription(description);
         } catch (e) {
-            engine.log('ERROR updating channel: ' + e.message);
+            logMessage('ERROR updating channel: ' + e.message, 1);
         }
     }
 
