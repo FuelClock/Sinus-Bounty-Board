@@ -1,4 +1,4 @@
-// Bounty Hunter Script v2.2.10 for SinusBot
+// Bounty Hunter Script v2.2.11 for SinusBot
 // Complete bounty board system for sea battle guilds
 // FIXED: Replaced non-existent private-message API with client.chat()
 //       so command responses render in the current channel
@@ -10,7 +10,7 @@
 
 registerPlugin({
     name: 'Bounty Hunter',
-    version: '2.2.10',
+    version: '2.2.11',
     author: 'FuelClock',
     description: 'Complete bounty board system with persistent storage',
     backends: ['ts3'],
@@ -46,7 +46,7 @@ registerPlugin({
     var persistenceInitialized = false;
     var store = null;
 
-    // Load store module for persistence (not a protected module — no requiredModules needed)
+    // ===== STORE MODULE =====
     try {
         store = require('store');
         engine.log('Store module loaded for persistence');
@@ -55,10 +55,131 @@ registerPlugin({
         store = null;
     }
 
+    // ===== OKLIB INTEGRATION =====
+    var oklib = null;
+    var oklibAvailable = false;
+
+    try {
+        var loadedOklib = require('OKlib.js');
+        if (loadedOklib && loadedOklib.general &&
+            typeof loadedOklib.general.checkVersion === 'function' &&
+            loadedOklib.general.checkVersion('1.0.6')) {
+            oklib = loadedOklib;
+            oklibAvailable = true;
+        }
+    } catch (e) {
+        engine.log('WARNING: OKlib could not be loaded: ' + e.message);
+    }
+
+    if (!oklibAvailable) {
+        engine.log('WARNING: OKlib 1.0.6+ unavailable — using manual implementations');
+    } else {
+        engine.log('OKlib loaded successfully (v1.0.6+)');
+    }
+
+    function logMessage(message, level) {
+        if (oklibAvailable && oklib.general && typeof oklib.general.log === 'function') {
+            oklib.general.log(message, level || 4);
+            return;
+        }
+        engine.log(message);
+    }
+
+    function containsIgnoreCase(value, search) {
+        if (oklibAvailable && oklib.comparator && typeof oklib.comparator.containsIgnoreCase === 'function') {
+            return oklib.comparator.containsIgnoreCase(String(value || ''), String(search || ''));
+        }
+        return String(value || '').toLowerCase().indexOf(String(search || '').toLowerCase()) !== -1;
+    }
+
+    function equalsIgnoreCase(left, right) {
+        return containsIgnoreCase(left, right) && containsIgnoreCase(right, left);
+    }
+
+    function startsWithIgnoreCase(value, prefix) {
+        value = String(value || '');
+        prefix = String(prefix || '');
+        return equalsIgnoreCase(value.substring(0, prefix.length), prefix);
+    }
+
+    function isMemberOfOne(client, groups) {
+        if (oklibAvailable && oklib.client && typeof oklib.client.isMemberOfOne === 'function') {
+            return oklib.client.isMemberOfOne(client, groups);
+        }
+
+        if (!client || typeof client.getServerGroups !== 'function') {
+            return false;
+        }
+
+        var groupIds = Array.isArray(groups) ? groups : [groups];
+        var clientGroups = client.getServerGroups();
+        for (var i = 0; i < clientGroups.length; i++) {
+            var clientId = String(clientGroups[i].id());
+            for (var j = 0; j < groupIds.length; j++) {
+                if (clientId === String(groupIds[j])) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    function searchClients(query, partMatch, caseSensitive, clients) {
+        if (oklibAvailable && oklib.client && typeof oklib.client.search === 'function') {
+            return oklib.client.search(query, partMatch, caseSensitive, clients);
+        }
+
+        var searchPool = Array.isArray(clients) ? clients : backend.getClients();
+        var searchTerm = String(query || '');
+        var results = [];
+        for (var i = 0; i < searchPool.length; i++) {
+            var client = searchPool[i];
+            var clientName = typeof client.name === 'function' ? client.name() : String(client.name || '');
+            var nameMatches = caseSensitive
+                ? clientName === searchTerm
+                : equalsIgnoreCase(clientName, searchTerm);
+            if (partMatch) {
+                nameMatches = caseSensitive
+                    ? clientName.indexOf(searchTerm) !== -1
+                    : containsIgnoreCase(clientName, searchTerm);
+            }
+
+            if (nameMatches || String(client.uid ? client.uid() : '').indexOf(searchTerm) !== -1 ||
+                String(client.id ? client.id() : '').indexOf(searchTerm) !== -1) {
+                results.push(client);
+            }
+        }
+        return results;
+    }
+
+    function isAuthorized(invoker) {
+        return isMemberOfOne(invoker, [authorizedGroupId]);
+    }
+
+    function isAdmin(invoker) {
+        return isMemberOfOne(invoker, [botAdminGroupId]);
+    }
+
+    if (!oklibAvailable) {
+        oklib = {
+            general: {
+                checkVersion: function() { return false; },
+                log: logMessage
+            },
+            client: {
+                search: searchClients,
+                isMemberOfOne: isMemberOfOne
+            },
+            comparator: {
+                containsIgnoreCase: containsIgnoreCase
+            }
+        };
+    }
+
     // ===== SCRIPT INITIALIZATION =====
     event.on('load', function(ev) {
-        engine.log('Bounty Hunter v2.2.10 loaded');
-        engine.log('Configuration - BotName: ' + botName + ', AuthGroup: ' + authorizedGroupId + ', DisplayChannel: ' + displayChannelId);
+        logMessage('Bounty Hunter v2.2.11 loaded');
+        logMessage('Configuration - BotName: ' + botName + ', AuthGroup: ' + authorizedGroupId + ', DisplayChannel: ' + displayChannelId);
 
         if (backend.isConnected()) {
             initialize();
@@ -70,17 +191,17 @@ registerPlugin({
     });
 
     function initialize() {
-        engine.log('Initializing bounty hunter system...');
+        logMessage('Initializing bounty hunter system...');
         loadPersistedData();
         updateChannelDescription();
 
         if (autoRefreshInterval > 0) {
-            engine.log('Starting auto-refresh every ' + autoRefreshInterval + ' seconds');
+            logMessage('Starting auto-refresh every ' + autoRefreshInterval + ' seconds');
             startAutoRefresh();
         }
 
         persistenceInitialized = true;
-        engine.log('Initialization complete. Loaded ' + bountyBoard.length + ' bounties');
+        logMessage('Initialization complete. Loaded ' + bountyBoard.length + ' bounties');
     }
 
     // ===== EVENT HANDLERS =====
@@ -110,18 +231,8 @@ registerPlugin({
         var invoker = ev.client;
 
         var clientGroups = invoker.getServerGroups();
-        var isAuthorized = false;
-        var isAdmin = false;
-
-        for (var i = 0; i < clientGroups.length; i++) {
-            var groupId = String(clientGroups[i].id());
-            if (groupId === authorizedGroupId) {
-                isAuthorized = true;
-            }
-            if (groupId === botAdminGroupId) {
-                isAdmin = true;
-            }
-        }
+        var isAuthorized = isAuthorized(invoker);
+        var isAdmin = isAdmin(invoker);
 
         if (!isAdmin && !isAuthorized) {
             invoker.chat('[BountyHunter] Permission denied');
@@ -132,7 +243,7 @@ registerPlugin({
         var subCommand = parts[0].toLowerCase();
 
         if (subCommand === 'test') {
-            invoker.chat('[BountyHunter] v2.2.10 test OK — authorized');
+            invoker.chat('[BountyHunter] v2.2.11 test OK — authorized');
             return;
         }
 
@@ -233,7 +344,7 @@ registerPlugin({
         var invoker = ev.client;
 
         if (parts.length < 3) {
-            invoker.chat('Usage: !bounty <playername> <gold_amount> <reason>');
+            invoker.chat('Usage: !bounty add <playername> <gold_amount> <reason>');
             return;
         }
 
@@ -251,7 +362,7 @@ registerPlugin({
             return;
         }
 
-        if (playerName.toLowerCase() === invoker.name().toLowerCase()) {
+        if (equalsIgnoreCase(playerName, invoker.name())) {
             invoker.chat('Cannot bounty yourself');
             return;
         }
@@ -295,7 +406,7 @@ registerPlugin({
 
         // Find the bounty with exact target name match
         for (var i = 0; i < bountyBoard.length; i++) {
-            if (bountyBoard[i].target.toLowerCase() === targetName.toLowerCase()) {
+            if (equalsIgnoreCase(bountyBoard[i].target, targetName)) {
                 foundBounty = bountyBoard[i];
                 bountyIndex = i;
                 break;
@@ -305,7 +416,7 @@ registerPlugin({
         // Also check for exact match including claimedBy field
         if (!foundBounty) {
             for (var i = 0; i < bountyBoard.length; i++) {
-                if (bountyBoard[i].target.toLowerCase() === targetName.toLowerCase() && !bountyBoard[i].claimedBy) {
+                if (equalsIgnoreCase(bountyBoard[i].target, targetName) && !bountyBoard[i].claimedBy) {
                     foundBounty = bountyBoard[i];
                     bountyIndex = i;
                     break;
@@ -484,7 +595,7 @@ registerPlugin({
 
         // Try exact target name match first
         for (var i = 0; i < bountyBoard.length; i++) {
-            if (bountyBoard[i].target.toLowerCase() === searchTerm.toLowerCase()) {
+            if (equalsIgnoreCase(bountyBoard[i].target, searchTerm)) {
                 removed = bountyBoard.splice(i, 1);
                 removalReason = 'matched by name';
                 break;
@@ -494,7 +605,7 @@ registerPlugin({
         // Try prefix name match
         if (!removed) {
             for (var i = 0; i < bountyBoard.length; i++) {
-                if (bountyBoard[i].target.toLowerCase().indexOf(searchTerm.toLowerCase()) === 0) {
+                if (startsWithIgnoreCase(bountyBoard[i].target, searchTerm)) {
                     removed = bountyBoard.splice(i, 1);
                     removalReason = 'matched by name';
                     break;
@@ -542,7 +653,7 @@ registerPlugin({
         } else {
             // Try exact target name match
             for (var i = 0; i < bountyBoard.length; i++) {
-                if (bountyBoard[i].target.toLowerCase() === searchTerm.toLowerCase()) {
+                if (equalsIgnoreCase(bountyBoard[i].target, searchTerm)) {
                     var entry = bountyBoard[i];
                     if (!isOwnerOrAdmin(entry)) {
                         invoker.chat('[BountyHunter] You can only remove your own bounties');
@@ -557,7 +668,7 @@ registerPlugin({
             // Try prefix name match (e.g. "Ger" for Gerrit)
             if (!removed) {
                 for (var i = 0; i < bountyBoard.length; i++) {
-                    if (bountyBoard[i].target.toLowerCase().indexOf(searchTerm.toLowerCase()) === 0) {
+                    if (startsWithIgnoreCase(bountyBoard[i].target, searchTerm)) {
                         var entry = bountyBoard[i];
                         if (!isOwnerOrAdmin(entry)) {
                             invoker.chat('[BountyHunter] You can only remove your own bounties');
@@ -635,16 +746,6 @@ registerPlugin({
     }
 
     // ===== UTILITY FUNCTIONS =====
-    function isAdmin(invoker) {
-        var clientGroups = invoker.getServerGroups();
-        for (var i = 0; i < clientGroups.length; i++) {
-            if (String(clientGroups[i].id()) === botAdminGroupId) {
-                return true;
-            }
-        }
-        return false;
-    }
-
     function sortBounties() {
         bountyBoard.sort(function(a, b) {
             return b.gold - a.gold;
