@@ -230,11 +230,7 @@ registerPlugin({
     function handleCommand(args, ev) {
         var invoker = ev.client;
 
-        var clientGroups = invoker.getServerGroups();
-        var isAuthorized = isAuthorized(invoker);
-        var isAdmin = isAdmin(invoker);
-
-        if (!isAdmin && !isAuthorized) {
+        if (!isAdmin(invoker) && !isAuthorized(invoker)) {
             invoker.chat('[BountyHunter] Permission denied');
             return;
         }
