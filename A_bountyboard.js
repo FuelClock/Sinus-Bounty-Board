@@ -351,6 +351,7 @@ registerPlugin({
             p + ' test - Test bot authorization\n' +
             p + ' help - Show this help message\n' +
             p + ' claim <target> - Claim a bounty you have killed\n' +
+            p + ' unclaim <target> - Cancel a pending claim\n' +
             p + ' debug - View store contents\n' +
             p + ' complete <target> - Remove bounty by name';
 
