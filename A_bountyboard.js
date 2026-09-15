@@ -24,7 +24,7 @@ registerPlugin({
         { name: 'AUTO_REFRESH_INTERVAL', title: 'Auto-refresh channel description (seconds, 0 = off)', type: 'number', default: 30 },
         { name: 'MIN_REWARD', title: 'Minimum bounty reward (gold)', type: 'number', default: 1 }
     ],
-    requiredModules: ['engine', 'backend', 'event'],
+    requiredModules: ['engine', 'backend', 'event', 'store'],
     autorun: false
 }, function(_, config, meta) {
     const engine = require('engine');
@@ -39,6 +39,8 @@ registerPlugin({
     var autoRefreshInterval = parseInt(config.AUTO_REFRESH_INTERVAL) || 30;
     var minReward = parseInt(config.MIN_REWARD) || 1;
     var fileAccessGroupId = String(config.FILE_ACCESS_GROUP_ID || '10');
+    var maxReasonLength = parseInt(config.MAX_REASON_LENGTH) || 50;
+    var fileAccessTimerSeconds = parseInt(config.FILE_ACCESS_TIMER_SECONDS) || 300;
 
     // ===== PERSISTENCE =====
     var bountyBoard = [];
@@ -52,7 +54,7 @@ registerPlugin({
         store = require('store');
         logMessage('Store module loaded for persistence', 3);
     } catch (e) {
-        logMessage('WARNING: Store module unavailable — persistence disabled', 2);
+        logMessage('FATAL: Store module unavailable — persistence disabled. Add "store" to requiredModules in manifest.', 1);
         store = null;
     }
 
@@ -323,6 +325,15 @@ registerPlugin({
             return;
         }
 
+        if (subCommand === 'unclaim') {
+            if (parts.length < 2) {
+                invoker.chat('Usage: !bounty unclaim <target>');
+                return;
+            }
+            handleUnclaim(parts.slice(1), ev);
+            return;
+        }
+
         invoker.chat('Unknown bounty command. Usage: !bounty add <playername> <gold_amount> [reason]');
     }
 
@@ -387,6 +398,11 @@ registerPlugin({
 
         if (bountyBoard.length >= maxBounties) {
             invoker.chat('Bounty board is full');
+            return;
+        }
+
+        if (reason.length > maxReasonLength) {
+            invoker.chat('Reason too long (max ' + maxReasonLength + ' chars)');
             return;
         }
 
@@ -559,7 +575,7 @@ registerPlugin({
                     displayChannel.setChannelGroup(invoker, fileAccessGroup);
                     logMessage('Bounty claim: Assigned file access group ' + fileAccessGroupId + ' to claimant ' + invoker.name() + ' for bounty ' + foundBounty.target, 3);
 
-                    // Set timer to remove file access group after 5 minutes
+                    // Set timer to remove file access group after configurable duration
                     var timerKey = invoker.name() + ':' + displayChannelId;
                     if (bountyClaimTimers[timerKey]) {
                         clearTimeout(bountyClaimTimers[timerKey]);
@@ -571,13 +587,13 @@ registerPlugin({
                                 displayChannel.setChannelGroup(invoker, backend.getChannelGroupByID(originalChannelGroup));
                             }
                             delete bountyClaimTimers[timerKey];
-                            logMessage('Bounty claim: Removed file access group from ' + invoker.name() + ' after 5 minutes', 3);
+                            logMessage('Bounty claim: Removed file access group from ' + invoker.name() + ' after ' + fileAccessTimerSeconds + ' seconds', 3);
                         } catch (e) {
                             logMessage('Bounty claim: Error removing file access group: ' + e.message, 1);
                         }
-                    }, 5 * 60 * 1000); // 5 minutes
+                    }, fileAccessTimerSeconds * 1000);
 
-                    invoker.chat('[BountyHunter] File access granted for 5 minutes');
+                    invoker.chat('[BountyHunter] File access granted for ' + fileAccessTimerSeconds + ' seconds');
                 } else {
                     logMessage('Bounty claim: File access group ' + fileAccessGroupId + ' not found in channel', 2);
                     invoker.chat('[BountyHunter] File access group not found');
@@ -765,21 +781,44 @@ registerPlugin({
         invoker.chat('[BountyHunter] Bounty not found: "' + searchTerm + '". Use !bounty list to see all bounties.');
     }
 
-    function handleClearBounties(ev) {
+    function handleUnclaim(parts, ev) {
         var invoker = ev.client;
+        var invokerName = invoker.name();
+        var targetName = parts.join(' ');
+        var foundBounty = null;
 
-        if (!isAdmin(invoker)) {
-            invoker.chat('[BountyHunter] Admin only');
+        // Find the bounty with exact target name match
+        for (var i = 0; i < bountyBoard.length; i++) {
+            if (equalsIgnoreCase(bountyBoard[i].target, targetName)) {
+                foundBounty = bountyBoard[i];
+                break;
+            }
+        }
+
+        if (!foundBounty) {
+            invoker.chat('[BountyHunter] Bounty not found: ' + targetName);
             return;
         }
 
-        bountyBoard = [];
+        // Only claimant or admin can unclaim
+        if (!isAdmin(invoker) && !equalsIgnoreCase(foundBounty.claimedBy, invokerName)) {
+            invoker.chat('[BountyHunter] You can only unclaim your own pending bounties');
+            return;
+        }
+
+        // Unclaim: reset claim status, clear file-access group, and remove timer
+        foundBounty.claimPending = false;
+        foundBounty.claimedBy = null;
+        foundBounty.claimedAt = null;
+
+        revokeClaimAccess(foundBounty);
+        foundBounty.posterOriginalGroupId = null;
+        foundBounty.claimantOriginalGroupId = null;
         if (persistenceInitialized) {
             saveData();
         }
         updateChannelDescription();
-
-        invoker.chat('[BountyHunter] All bounties cleared');
+        invoker.chat('[BountyHunter] Unclaimed: ' + foundBounty.target);
     }
 
 // ===== DISPLAY FUNCTIONS =====
