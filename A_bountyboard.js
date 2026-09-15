@@ -303,12 +303,11 @@ registerPlugin({
         }
 
         if (subCommand === 'add') {
-            if (parts.length < 4) {
+            if (parts.length < 3) {
                 var missing = [];
                 if (parts.length < 2) { missing.push('playername'); }
                 if (parts.length < 3) { missing.push('gold amount'); }
-                if (parts.length < 4) { missing.push('reason'); }
-                invoker.chat('[BountyHunter] Missing: ' + missing.join(', ') + '. Usage: !bounty add <playername> <gold_amount> <reason>');
+                invoker.chat('[BountyHunter] Missing: ' + missing.join(', ') + '. Usage: !bounty add <playername> <gold_amount> [reason]');
                 return;
             }
             handlePlaceBounty(parts.slice(1), ev);
@@ -324,7 +323,7 @@ registerPlugin({
             return;
         }
 
-        invoker.chat('Unknown bounty command. Usage: !bounty add <playername> <gold_amount> <reason>');
+        invoker.chat('Unknown bounty command. Usage: !bounty add <playername> <gold_amount> [reason]');
     }
 
     // ===== HELP =====
@@ -333,7 +332,7 @@ registerPlugin({
         var p = '!' + botName;
 
         var helpMsg = '[BountyHunter] BOUNTY COMMANDS:\n' +
-            p + ' add <playername> <gold> <reason> - Place a bounty\n' +
+            p + ' add <playername> <gold> [reason] - Place a bounty\n' +
             p + ' list - List all active bounties\n' +
             p + ' remove <number> - Remove bounty by ranking (admin)\n' +
             p + ' remove <target> - Remove bounty by name (admin)\n' +
@@ -351,8 +350,8 @@ registerPlugin({
     function handlePlaceBounty(parts, ev) {
         var invoker = ev.client;
 
-        if (parts.length < 3) {
-            invoker.chat('Usage: !bounty add <playername> <gold_amount> <reason>');
+        if (parts.length < 2) {
+            invoker.chat('Usage: !bounty add <playername> <gold_amount> [reason]');
             return;
         }
 
@@ -373,11 +372,6 @@ registerPlugin({
 
         if (goldAmount <= 0) {
             invoker.chat('Invalid gold amount');
-            return;
-        }
-
-        if (!reason) {
-            invoker.chat('Please add a reason for the bounty');
             return;
         }
 
@@ -812,7 +806,7 @@ registerPlugin({
         for (var i = 0; i < bountyBoard.length; i++) {
             var b = bountyBoard[i];
             var goldDisplay = formatGold(b.gold);
-            msg += (i + 1) + '.    ' + b.target.padEnd(17) + '  ' + goldDisplay + '  ' + b.reason.substring(0, 40).padEnd(40) + ' (' + b.postedBy + ')\n';
+            msg += (i + 1) + '.    ' + b.target.padEnd(17) + '  ' + goldDisplay + '  ' + (b.reason || 'No reason').substring(0, 40).padEnd(40) + ' (' + b.postedBy + ')\n';
             if (b.claimPending) {
                 msg += '       CLAIM PENDING by ' + b.claimedBy + ' at ' + new Date(b.claimedAt).toLocaleString() + '\n';
             } else if (b.claimedBy) {
