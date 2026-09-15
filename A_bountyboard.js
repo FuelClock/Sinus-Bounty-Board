@@ -230,7 +230,20 @@ registerPlugin({
     function handleCommand(args, ev) {
         var invoker = ev.client;
 
-        if (!isAdmin(invoker) && !isAuthorized(invoker)) {
+        var invokerIsAdmin = isAdmin(invoker);
+        var invokerIsAuthorized = isAuthorized(invoker);
+
+        // Diagnostic: log group membership to troubleshoot permission issues
+        var invokerGroupIds = [];
+        if (invoker && typeof invoker.getServerGroups === 'function') {
+            var rawGroups = invoker.getServerGroups();
+            for (var gi = 0; gi < rawGroups.length; gi++) {
+                invokerGroupIds.push(rawGroups[gi].id());
+            }
+        }
+        logMessage('AUTH CHECK: ' + invoker.name() + ' groups=[' + invokerGroupIds.join(',') + '] authGroup=' + authorizedGroupId + ' adminGroup=' + botAdminGroupId + ' >> authorized=' + invokerIsAuthorized + ' admin=' + invokerIsAdmin, 3);
+
+        if (!invokerIsAdmin && !invokerIsAuthorized) {
             invoker.chat('[BountyHunter] Permission denied');
             return;
         }
@@ -463,7 +476,11 @@ registerPlugin({
                 var allClients = backend.getClients();
                 var posterClients = searchClients(originalPoster, false, false, allClients);
                 if (posterClients.length > 0) {
-                    posterClients[0].poke('[BountyHunter] Bounty claimed: ' + foundBounty.target);
+                    var posterPokeMsg = '[BountyHunter] Claim filed on ' + foundBounty.target + '. Check the bounty board files for evidence.';
+                    if (posterPokeMsg.length > 80) {
+                        posterPokeMsg = posterPokeMsg.substring(0, 80);
+                    }
+                    posterClients[0].poke(posterPokeMsg);
                     logMessage('Bounty claim: Notified original poster ' + originalPoster + ' about claim on ' + foundBounty.target, 3);
                 }
             } catch (e) {
@@ -480,7 +497,7 @@ registerPlugin({
         }
 
         // Send full instructions via channel chat
-        var dmMessage = '[BountyHunter] Instructions for ' + foundBounty.target + ': Upload your screenshot or video evidence to the file browser in the bounty board channel, named: ' + foundBounty.target + '. If the bounty poster is not online in Teamspeak, send a private message to them ingame to notify them about the claim.';
+        var dmMessage = '[BountyHunter] Claim instructions for bounty ' + foundBounty.target + ': Upload your screenshot or video evidence to the file browser in the bounty board channel(right click the channel > browse files). If the bounty poster is not online in Teamspeak, send a private message to them ingame to notify them about the claim.';
         try {
             invoker.chat(dmMessage);
         } catch (e) {
@@ -575,6 +592,11 @@ registerPlugin({
         var invoker = ev.client;
         var invokerName = invoker.name();
 
+        // Owners can complete their own bounties; admins can complete any
+        var isOwnerOrAdmin = function(bounty) {
+            return bounty.postedBy === invokerName || isAdmin(invoker);
+        };
+
         // !bounty complete without a target does nothing
         if (args.length === 0) {
             invoker.chat('Usage: !bounty complete <target>');
@@ -588,6 +610,10 @@ registerPlugin({
         // Try exact target name match first
         for (var i = 0; i < bountyBoard.length; i++) {
             if (equalsIgnoreCase(bountyBoard[i].target, searchTerm)) {
+                if (!isOwnerOrAdmin(bountyBoard[i])) {
+                    invoker.chat('[BountyHunter] You can only complete your own bounties');
+                    return;
+                }
                 removed = bountyBoard.splice(i, 1);
                 removalReason = 'matched by name';
                 break;
@@ -598,6 +624,10 @@ registerPlugin({
         if (!removed) {
             for (var i = 0; i < bountyBoard.length; i++) {
                 if (startsWithIgnoreCase(bountyBoard[i].target, searchTerm)) {
+                    if (!isOwnerOrAdmin(bountyBoard[i])) {
+                        invoker.chat('[BountyHunter] You can only complete your own bounties');
+                        return;
+                    }
                     removed = bountyBoard.splice(i, 1);
                     removalReason = 'matched by name';
                     break;
