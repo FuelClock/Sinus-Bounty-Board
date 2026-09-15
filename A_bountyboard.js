@@ -422,25 +422,12 @@ registerPlugin({
         var targetName = parts.join(' ');
         var displayChannel = backend.getChannelByID(displayChannelId);
         var foundBounty = null;
-        var bountyIndex = -1;
 
         // Find the bounty with exact target name match
         for (var i = 0; i < bountyBoard.length; i++) {
             if (equalsIgnoreCase(bountyBoard[i].target, targetName)) {
                 foundBounty = bountyBoard[i];
-                bountyIndex = i;
                 break;
-            }
-        }
-
-        // Also check for exact match including claimedBy field
-        if (!foundBounty) {
-            for (var i = 0; i < bountyBoard.length; i++) {
-                if (equalsIgnoreCase(bountyBoard[i].target, targetName) && !bountyBoard[i].claimedBy) {
-                    foundBounty = bountyBoard[i];
-                    bountyIndex = i;
-                    break;
-                }
             }
         }
 
@@ -656,7 +643,7 @@ registerPlugin({
 
         // Owners can complete their own bounties; admins can complete any
         var isOwnerOrAdmin = function(bounty) {
-            return bounty.postedBy === invokerName || isAdmin(invoker);
+            return equalsIgnoreCase(bounty.postedBy, invokerName) || isAdmin(invoker);
         };
 
         // !bounty complete without a target does nothing
@@ -716,7 +703,7 @@ registerPlugin({
 
         // Owners can remove their own bounties; admins can remove any
         var isOwnerOrAdmin = function(bounty) {
-            return bounty.postedBy === invokerName || isAdmin(invoker);
+            return equalsIgnoreCase(bounty.postedBy, invokerName) || isAdmin(invoker);
         };
 
         var searchTerm = args.join(' ');
