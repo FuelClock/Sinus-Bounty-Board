@@ -304,7 +304,11 @@ registerPlugin({
 
         if (subCommand === 'add') {
             if (parts.length < 4) {
-                invoker.chat('Usage: !bounty add <playername> <gold_amount> <reason>');
+                var missing = [];
+                if (parts.length < 2) { missing.push('playername'); }
+                if (parts.length < 3) { missing.push('gold amount'); }
+                if (parts.length < 4) { missing.push('reason'); }
+                invoker.chat('[BountyHunter] Missing: ' + missing.join(', ') + '. Usage: !bounty add <playername> <gold_amount> <reason>');
                 return;
             }
             handlePlaceBounty(parts.slice(1), ev);
