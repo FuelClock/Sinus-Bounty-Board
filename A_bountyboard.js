@@ -352,12 +352,28 @@ registerPlugin({
             return;
         }
 
-        var playerName = parts[0];
-        var goldAmount = parseInt(parts[1]);
-        var reason = parts.slice(2).join(' ');
+        var playerName = String(parts[0] || '').trim();
+        var goldStr = String(parts[1] || '').trim();
+        var reason = parts.slice(2).join(' ').trim();
 
-        if (isNaN(goldAmount) || goldAmount <= 0) {
+        if (!playerName) {
+            invoker.chat('Invalid player name');
+            return;
+        }
+
+        if (!/^\d+$/.test(goldStr)) {
+            invoker.chat('Invalid gold amount — use a positive whole number');
+            return;
+        }
+        var goldAmount = parseInt(goldStr, 10);
+
+        if (goldAmount <= 0) {
             invoker.chat('Invalid gold amount');
+            return;
+        }
+
+        if (!reason) {
+            invoker.chat('Please add a reason for the bounty');
             return;
         }
 
