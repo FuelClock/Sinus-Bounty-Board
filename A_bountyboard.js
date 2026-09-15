@@ -211,14 +211,7 @@ registerPlugin({
             return;
         }
 
-        // Test command
-        if (ev.text === '!btest' || ev.text.startsWith('!btest ')) {
-            logMessage('TEST COMMAND RECEIVED from ' + ev.client.name(), 4);
-            ev.client.chat('[BountyHunter] Test received — bounty hunter working');
-            return;
-        }
-
-        // Bounty commands: !bounty <subcommand>
+        // Bounty commands: !<botName> <subcommand>
         var prefix = '!' + botName + ' ';
         if (ev.text.startsWith(prefix)) {
             var cmdText = ev.text.substring(prefix.length);
@@ -333,18 +326,19 @@ registerPlugin({
     // ===== HELP =====
     function displayHelp(ev) {
         var invoker = ev.client;
+        var p = '!' + botName;
 
         var helpMsg = '[BountyHunter] BOUNTY COMMANDS:\n' +
-            '!bounty add <playername> <gold> <reason> - Place a bounty\n' +
-            '!bounty list - List all active bounties\n' +
-            '!bounty remove <number> - Remove bounty by ranking (admin)\n' +
-            '!bounty remove <target> - Remove bounty by name (admin)\n' +
-            '!bounty clear - Clear all bounties (admin)\n' +
-            '!bounty test - Test bot authorization\n' +
-            '!bounty help - Show this help message\n' +
-            '!bounty claim <target> - Claim a bounty you have killed\n' +
-            '!bounty debug - View store contents\n' +
-            '!bounty complete <target> - Remove bounty by name';
+            p + ' add <playername> <gold> <reason> - Place a bounty\n' +
+            p + ' list - List all active bounties\n' +
+            p + ' remove <number> - Remove bounty by ranking (admin)\n' +
+            p + ' remove <target> - Remove bounty by name (admin)\n' +
+            p + ' clear - Clear all bounties (admin)\n' +
+            p + ' test - Test bot authorization\n' +
+            p + ' help - Show this help message\n' +
+            p + ' claim <target> - Claim a bounty you have killed\n' +
+            p + ' debug - View store contents\n' +
+            p + ' complete <target> - Remove bounty by name';
 
         invoker.chat(helpMsg);
     }
@@ -524,6 +518,11 @@ registerPlugin({
                         }
 
                         if (fileAccessGroup) {
+                            var posterOrigGroup = client.getChannelGroup();
+                            foundBounty.posterOriginalGroupId = posterOrigGroup ? posterOrigGroup.id() : null;
+                            if (persistenceInitialized) {
+                                saveData();
+                            }
                             displayChannel.setChannelGroup(client, fileAccessGroup);
                             logMessage('Bounty claim: Assigned file access group ' + fileAccessGroupId + ' to original poster ' + originalPoster + ' for bounty ' + foundBounty.target, 3);
                         }
@@ -550,6 +549,10 @@ registerPlugin({
                     // Get current channel group
                     var currentChannelGroup = invoker.getChannelGroup();
                     var originalChannelGroup = currentChannelGroup ? currentChannelGroup.id() : null;
+                    foundBounty.claimantOriginalGroupId = originalChannelGroup;
+                    if (persistenceInitialized) {
+                        saveData();
+                    }
 
                     // Assign file access group
                     displayChannel.setChannelGroup(invoker, fileAccessGroup);
@@ -587,6 +590,48 @@ registerPlugin({
             invoker.chat('[BountyHunter] Display channel not found');
         }
 
+    }
+
+    function revokeClaimAccess(bounty) {
+        // Restore the original display-channel group for the poster and claimant
+        // so completing/removing a bounty does not leave file-access permissions behind.
+        var displayChannel = backend.getChannelByID(displayChannelId);
+        if (!displayChannel || !bounty) {
+            return;
+        }
+
+        // Poster
+        if (bounty.postedBy && bounty.posterOriginalGroupId !== undefined && bounty.posterOriginalGroupId !== null) {
+            try {
+                var posterClients = searchClients(bounty.postedBy, false, false, backend.getClients());
+                if (posterClients.length > 0) {
+                    displayChannel.setChannelGroup(posterClients[0], backend.getChannelGroupByID(bounty.posterOriginalGroupId));
+                    logMessage('Bounty: Restored poster ' + bounty.postedBy + ' to group ' + bounty.posterOriginalGroupId, 3);
+                }
+            } catch (e) {
+                logMessage('Bounty: Failed to restore poster group: ' + e.message, 2);
+            }
+        }
+
+        // Claimant — clear pending timer and restore
+        if (bounty.claimedBy) {
+            try {
+                var timerKey = bounty.claimedBy + ':' + displayChannelId;
+                if (bountyClaimTimers[timerKey]) {
+                    clearTimeout(bountyClaimTimers[timerKey]);
+                    delete bountyClaimTimers[timerKey];
+                }
+                if (bounty.claimantOriginalGroupId !== undefined && bounty.claimantOriginalGroupId !== null) {
+                    var claimantClients = searchClients(bounty.claimedBy, false, false, backend.getClients());
+                    if (claimantClients.length > 0) {
+                        displayChannel.setChannelGroup(claimantClients[0], backend.getChannelGroupByID(bounty.claimantOriginalGroupId));
+                        logMessage('Bounty: Restored claimant ' + bounty.claimedBy + ' to group ' + bounty.claimantOriginalGroupId, 3);
+                    }
+                }
+            } catch (e) {
+                logMessage('Bounty: Failed to restore claimant group: ' + e.message, 2);
+            }
+        }
     }
 
     function handleCompleteBounty(args, ev) {
@@ -637,6 +682,7 @@ registerPlugin({
         }
 
         if (removed) {
+            revokeClaimAccess(removed[0]);
             if (persistenceInitialized) {
                 saveData();
             }
@@ -706,6 +752,7 @@ registerPlugin({
         }
 
         if (removed) {
+            revokeClaimAccess(removed[0]);
             if (persistenceInitialized) {
                 saveData();
             }
@@ -807,7 +854,10 @@ registerPlugin({
                                 postedBy: typeof entry.postedBy === 'string' ? entry.postedBy : '',
                                 postedAt: typeof entry.postedAt === 'string' ? entry.postedAt : new Date().toISOString(),
                                 claimedBy: entry.claimedBy || null,
-                                claimedAt: entry.claimedAt || null
+                                claimedAt: entry.claimedAt || null,
+                                claimPending: entry.claimPending || false,
+                                posterOriginalGroupId: entry.posterOriginalGroupId !== undefined ? entry.posterOriginalGroupId : null,
+                                claimantOriginalGroupId: entry.claimantOriginalGroupId !== undefined ? entry.claimantOriginalGroupId : null
                             };
                         });
                     } else {
