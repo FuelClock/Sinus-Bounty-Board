@@ -854,6 +854,34 @@ registerPlugin({
         }
     }
 
+    function sanitizeBountyEntry(entry) {
+        // Reject malformed entries and sanitize known fields while preserving
+        // any unknown/future fields so they are not silently dropped on load.
+        if (!entry || typeof entry !== 'object') {
+            return null;
+        }
+
+        var out = {};
+        for (var key in entry) {
+            if (entry.hasOwnProperty(key)) {
+                out[key] = entry[key];
+            }
+        }
+
+        out.id = (typeof entry.id === 'number') ? entry.id : Date.now();
+        out.target = (typeof entry.target === 'string') ? entry.target : '';
+        var goldVal = (typeof entry.gold === 'number') ? entry.gold : parseInt(entry.gold, 10);
+        out.gold = isNaN(goldVal) ? 0 : goldVal;
+        out.reason = (typeof entry.reason === 'string') ? entry.reason : '';
+        out.postedBy = (typeof entry.postedBy === 'string') ? entry.postedBy : '';
+        out.postedAt = (typeof entry.postedAt === 'string' && entry.postedAt) ? entry.postedAt : new Date().toISOString();
+        out.claimedBy = entry.claimedBy || null;
+        out.claimedAt = entry.claimedAt || null;
+        out.claimPending = !!entry.claimPending;
+
+        return out;
+    }
+
     function loadPersistedData() {
         try {
             if (store) {
@@ -861,21 +889,14 @@ registerPlugin({
                 if (rawData) {
                     var parsedData = JSON.parse(rawData);
                     if (Array.isArray(parsedData)) {
-                        bountyBoard = parsedData.map(function(entry) {
-                            return {
-                                id: entry.id && typeof entry.id === 'number' ? entry.id : Date.now(),
-                                target: typeof entry.target === 'string' ? entry.target : '',
-                                gold: typeof entry.gold === 'number' ? entry.gold : (typeof entry.gold === 'string' ? parseInt(entry.gold) : 0),
-                                reason: typeof entry.reason === 'string' ? entry.reason : '',
-                                postedBy: typeof entry.postedBy === 'string' ? entry.postedBy : '',
-                                postedAt: typeof entry.postedAt === 'string' ? entry.postedAt : new Date().toISOString(),
-                                claimedBy: entry.claimedBy || null,
-                                claimedAt: entry.claimedAt || null,
-                                claimPending: entry.claimPending || false,
-                                posterOriginalGroupId: entry.posterOriginalGroupId !== undefined ? entry.posterOriginalGroupId : null,
-                                claimantOriginalGroupId: entry.claimantOriginalGroupId !== undefined ? entry.claimantOriginalGroupId : null
-                            };
-                        });
+                        var loaded = [];
+                        for (var i = 0; i < parsedData.length; i++) {
+                            var clean = sanitizeBountyEntry(parsedData[i]);
+                            if (clean) {
+                                loaded.push(clean);
+                            }
+                        }
+                        bountyBoard = loaded;
                     } else {
                         bountyBoard = [];
                     }
