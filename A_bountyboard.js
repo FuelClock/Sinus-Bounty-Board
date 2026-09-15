@@ -19,6 +19,7 @@ registerPlugin({
         { name: 'AUTHORIZED_GROUP', title: 'Server Group ID (authorized to place bounties)', type: 'string', default: '23' },
         { name: 'DISPLAY_CHANNEL_ID', title: 'Channel ID (display bounty board in description)', type: 'string', default: '832' },
         { name: 'BOT_ADMIN_GROUP', title: 'Server Group ID (admin)', type: 'string', default: '17' },
+        { name: 'FILE_ACCESS_GROUP_ID', title: 'Channel Group ID (file access for claim evidence)', type: 'string', default: '10' },
         { name: 'MAX_ACTIVE_BOUNTIES', title: 'Maximum active bounties at once', type: 'number', default: 50 },
         { name: 'AUTO_REFRESH_INTERVAL', title: 'Auto-refresh channel description (seconds, 0 = off)', type: 'number', default: 30 },
         { name: 'MIN_REWARD', title: 'Minimum bounty reward (gold)', type: 'number', default: 1 }
