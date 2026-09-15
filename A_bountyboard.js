@@ -587,10 +587,20 @@ registerPlugin({
                             if (originalChannelGroup) {
                                 displayChannel.setChannelGroup(invoker, backend.getChannelGroupByID(originalChannelGroup));
                             }
-                            delete bountyClaimTimers[timerKey];
-                            logMessage('Bounty claim: Removed file access group from ' + invoker.name() + ' after ' + fileAccessTimerSeconds + ' seconds', 3);
                         } catch (e) {
                             logMessage('Bounty claim: Error removing file access group: ' + e.message, 1);
+                        }
+                        delete bountyClaimTimers[timerKey];
+
+                        // The file-access window has ended; keep the claim but remove its pending state
+                        if (foundBounty && foundBounty.claimPending &&
+                            equalsIgnoreCase(foundBounty.claimedBy, invoker.name())) {
+                            foundBounty.claimPending = false;
+                            if (persistenceInitialized) {
+                                saveData();
+                            }
+                            updateChannelDescription();
+                            logMessage('Bounty claim: Pending status expired for ' + invoker.name() + ' after ' + fileAccessTimerSeconds + ' seconds', 3);
                         }
                     }, fileAccessTimerSeconds * 1000);
 
