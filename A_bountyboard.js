@@ -791,8 +791,14 @@ registerPlugin({
         return gold + ' gold';
     }
 
+    function truncate(value, maxLength) {
+        var text = String(value == null ? '' : value);
+        return text.length > maxLength ? text.substring(0, maxLength) : text;
+    }
+
     function displayBountyList(ev) {
         var invoker = ev.client;
+        var p = '!' + botName;
 
         if (bountyBoard.length === 0) {
             invoker.chat('[BountyHunter] Bounty board is empty');
@@ -806,14 +812,14 @@ registerPlugin({
         for (var i = 0; i < bountyBoard.length; i++) {
             var b = bountyBoard[i];
             var goldDisplay = formatGold(b.gold);
-            msg += (i + 1) + '.    ' + b.target.padEnd(17) + '  ' + goldDisplay + '  ' + (b.reason || 'No reason').substring(0, 40).padEnd(40) + ' (' + b.postedBy + ')\n';
+            msg += (i + 1) + '.    ' + truncate(b.target, 17) + '  ' + goldDisplay + '  ' + truncate(b.reason || 'No reason', 40) + ' (' + b.postedBy + ')\n';
             if (b.claimPending) {
                 msg += '       CLAIM PENDING by ' + b.claimedBy + ' at ' + new Date(b.claimedAt).toLocaleString() + '\n';
             } else if (b.claimedBy) {
                 msg += '       CLAIMED by ' + b.claimedBy + ' at ' + new Date(b.claimedAt).toLocaleString() + '\n';
             }
         }
-        msg += '\n!bounty remove <number> | !bounty remove <target> (admin only)';
+        msg += '\n' + p + ' remove <number> | ' + p + ' remove <target> (admin only)';
 
         invoker.chat(msg);
     }
