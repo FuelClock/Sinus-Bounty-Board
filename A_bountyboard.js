@@ -443,13 +443,13 @@ registerPlugin({
         }
 
         // Check if already claim pending by someone else
-        if (foundBounty.claimPending && foundBounty.claimedBy && foundBounty.claimedBy !== invoker.name()) {
+        if (foundBounty.claimPending && foundBounty.claimedBy && !equalsIgnoreCase(foundBounty.claimedBy, invoker.name())) {
             invoker.chat('[BountyHunter] Bounty already claim pending by ' + foundBounty.claimedBy);
             return;
         }
 
         // Check if this user already claimed this bounty
-        if (foundBounty.claimPending && foundBounty.claimedBy === invoker.name()) {
+        if (foundBounty.claimPending && equalsIgnoreCase(foundBounty.claimedBy, invoker.name())) {
             invoker.chat('[BountyHunter] You already have a pending claim on this bounty');
             return;
         }
@@ -469,7 +469,7 @@ registerPlugin({
 
         // Notify the original poster if they are online
         var originalPoster = foundBounty.postedBy;
-        if (originalPoster && originalPoster !== invoker.name()) {
+        if (originalPoster && !equalsIgnoreCase(originalPoster, invoker.name())) {
             try {
                 var allClients = backend.getClients();
                 var posterClients = searchClients(originalPoster, false, false, allClients);
@@ -504,7 +504,7 @@ registerPlugin({
 
         // ===== FILE ACCESS GROUP ASSIGNMENT =====
         // Assign persistent file access group to original poster (remains until bounty is completed)
-        if (originalPoster && originalPoster !== invoker.name()) {
+        if (originalPoster && !equalsIgnoreCase(originalPoster, invoker.name())) {
             try {
                 var allClients = backend.getClients();
                 var posterClients = searchClients(originalPoster, false, false, allClients);
