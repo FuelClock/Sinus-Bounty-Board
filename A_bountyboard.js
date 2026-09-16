@@ -239,13 +239,16 @@ registerPlugin({
         }
         logMessage('AUTH CHECK: ' + invoker.name() + ' groups=[' + invokerGroupIds.join(',') + '] authGroup=' + authorizedGroupId + ' adminGroup=' + botAdminGroupId + ' >> authorized=' + invokerIsAuthorized + ' admin=' + invokerIsAdmin, 3);
 
-        // confirm is claimant-scoped and bypasses the general admin/authorized gate
-        if (subCommand === 'confirm') {
-            if (args.trim().length < 1) {
-                invoker.chat('Usage: !bounty confirm <target>');
+        var parts = args.trim().split(/\s+/);
+        var subCommand = parts[0].toLowerCase();
+
+        // evidence is claimant-scoped and bypasses the general admin/authorized gate
+        if (subCommand === 'evidence') {
+            if (parts.length < 2) {
+                invoker.chat('Usage: !bounty evidence <target>');
                 return;
             }
-            handleConfirmBounty(parts.slice(1), ev);
+            handleEvidenceUploaded(parts.slice(1), ev);
             return;
         }
 
@@ -362,7 +365,7 @@ registerPlugin({
             p + ' help - Show this help message\n' +
             p + ' claim <target> - Claim a bounty you have killed\n' +
             p + ' unclaim <target> - Cancel a pending claim\n' +
-            p + ' confirm <target> - Confirm evidence upload (claimant)\n' +
+            p + ' evidence <target> - Mark evidence as uploaded (claimant)\n' +
             p + ' debug - View store contents\n' +
             p + ' complete <target> - Remove bounty by name';
 
@@ -526,29 +529,6 @@ registerPlugin({
         // Update the channel description to show CLAIM PENDING status
         updateChannelDescription();
 
-        // Notify ALL original posters about the claim (they must confirm evidence before full notification)
-        var notifiedPosters = [];
-        for (var pi = 0; pi < foundBounties.length; pi++) {
-            var posterName = foundBounties[pi].postedBy;
-            if (posterName && !equalsIgnoreCase(posterName, invoker.name()) && notifiedPosters.indexOf(posterName) === -1) {
-                try {
-                    var allPClients = backend.getClients();
-                    var posterClients = searchClients(posterName, false, false, allPClients);
-                    if (posterClients.length > 0) {
-                        var posterPokeMsg = '[BountyHunter] Claim filed on ' + foundBounties[pi].target + '. Evidence pending confirmation.';
-                        if (posterPokeMsg.length > 80) {
-                            posterPokeMsg = posterPokeMsg.substring(0, 80);
-                        }
-                        posterClients[0].poke(posterPokeMsg);
-                        logMessage('Bounty claim: Notified original poster ' + posterName + ' about claim on ' + foundBounties[pi].target, 3);
-                        notifiedPosters.push(posterName);
-                    }
-                } catch (e) {
-                    logMessage('Bounty claim: Failed to notify original poster ' + posterName + ': ' + e.message, 2);
-                }
-            }
-        }
-
         // Poke claimant with evidence submission instructions
         try {
             invoker.poke('[BountyHunter] Claim pending on ' + targetName + '. Check your DM.');
@@ -557,7 +537,7 @@ registerPlugin({
         }
 
         // Send full instructions via channel chat
-        var dmMessage = '[BountyHunter] Claim instructions for bounty ' + targetName + ': Upload your screenshot or video evidence to the file browser in the bounty board channel (right click the channel > browse files). Use !bounty confirm ' + targetName + ' after uploading.';
+        var dmMessage = '[BountyHunter] Claim instructions for bounty ' + targetName + ': Upload your screenshot or video evidence to the file browser in the bounty board channel (right click the channel > browse files). Use !bounty evidence ' + targetName + ' after uploading.';
         try {
             invoker.chat(dmMessage);
         } catch (e) {
@@ -803,7 +783,7 @@ registerPlugin({
         invoker.chat('[BountyHunter] Bounty not found: "' + searchTerm + '". Use !bounty list to see all bounties.');
     }
 
-    function handleConfirmBounty(args, ev) {
+    function handleEvidenceUploaded(args, ev) {
         var invoker = ev.client;
         var invokerName = invoker.name();
         var targetName = args.join(' ');
@@ -835,7 +815,7 @@ registerPlugin({
             }
             // Reject if already confirmed
             if (fb.evidenceConfirmed) {
-                invoker.chat('[BountyHunter] Evidence is already confirmed for ' + fb.target);
+                invoker.chat('[BountyHunter] Evidence already uploaded for ' + fb.target);
                 return;
             }
         }
@@ -859,7 +839,7 @@ registerPlugin({
                 try {
                     var allClients = backend.getClients();
                     var posterClients = searchClients(posterName, false, false, allClients);
-                    var notifyMsg = '[BountyHunter] Evidence confirmed for ' + foundBounties[pi].target + ' by ' + invoker.name() + '. Check the bounty board files.';
+                    var notifyMsg = '[BountyHunter] Evidence uploaded for ' + foundBounties[pi].target + ' by ' + invoker.name() + '. Check the bounty board files.';
                     notifyMsg = truncate(notifyMsg, 80);
                     var notifiedCount = 0;
                     for (var ci = 0; ci < posterClients.length; ci++) {
@@ -867,25 +847,25 @@ registerPlugin({
                             posterClients[ci].poke(notifyMsg);
                             notifiedCount++;
                         } catch (e) {
-                            logMessage('Bounty confirm: Failed to notify poster client: ' + e.message, 2);
+                            logMessage('Bounty evidence: Failed to notify poster client: ' + e.message, 2);
                         }
                     }
                     if (notifiedCount > 0) {
-                        logMessage('Bounty confirm: Notified ' + notifiedCount + ' poster client(s) for ' + posterName + ' about confirmed evidence on ' + foundBounties[pi].target, 3);
+                        logMessage('Bounty evidence: Notified ' + notifiedCount + ' poster client(s) for ' + posterName + ' about uploaded evidence on ' + foundBounties[pi].target, 3);
                         notifiedPosters.push(posterName);
                     } else if (posterClients.length > 0) {
-                        logMessage('Bounty confirm: Poster ' + posterName + ' is online but no notification was delivered', 2);
+                        logMessage('Bounty evidence: Poster ' + posterName + ' is online but no notification was delivered', 2);
                     } else {
-                        logMessage('Bounty confirm: Poster ' + posterName + ' is not online; confirmation was recorded', 2);
+                        logMessage('Bounty evidence: Poster ' + posterName + ' is not online; confirmation was recorded', 2);
                     }
                 } catch (e) {
-                    logMessage('Bounty confirm: Failed to resolve poster ' + posterName + ': ' + e.message, 2);
+                    logMessage('Bounty evidence: Failed to resolve poster ' + posterName + ': ' + e.message, 2);
                 }
             }
         }
 
         updateChannelDescription();
-        invoker.chat('[BountyHunter] Evidence confirmed for ' + targetName);
+        invoker.chat('[BountyHunter] Evidence uploaded for ' + targetName);
     }
 
     function handleUnclaim(parts, ev) {
@@ -928,7 +908,8 @@ registerPlugin({
         invoker.chat('[BountyHunter] Unclaimed: ' + foundBounty.target);
     }
 
-// ===== DISPLAY FUNCTIONS =====
+    // ===== DISPLAY FUNCTIONS =====
+
     function formatGold(gold) {
         var chests = Math.ceil(gold / 500);
         if (chests > 0) {
@@ -940,6 +921,45 @@ registerPlugin({
     function truncate(value, maxLength) {
         var text = String(value == null ? '' : value);
         return text.length > maxLength ? text.substring(0, maxLength) : text;
+    }
+
+
+    function updateChannelDescription() {
+        var channel = backend.getChannelByID(displayChannelId);
+        if (!channel) {
+            logMessage('ERROR: Display channel ' + displayChannelId + ' not found', 1);
+            return;
+        }
+
+        var totalGold = 0;
+        for (var i = 0; i < bountyBoard.length; i++) {
+            totalGold += bountyBoard[i].gold;
+        }
+
+        var bountyList = '';
+        for (var i = 0; i < bountyBoard.length && i < 15; i++) {
+            var b = bountyBoard[i];
+            var claimedStatus = b.claimPending ? ' [CLAIM PENDING]' : (b.claimedBy ? ' [CLAIMED]' : '');
+            bountyList += (i + 1) + '. ' + b.target + ' - ' + formatGold(b.gold) + claimedStatus + '\n';
+
+            if (b.evidenceConfirmed) {
+                bountyList += '   EVIDENCE: Uploaded by ' + b.evidenceConfirmedBy + '\n';
+            }
+        }
+
+        if (bountyBoard.length === 0) {
+            bountyList = '[center]No active bounties[/center]';
+        } else if (bountyBoard.length > 15) {
+            bountyList += '... and ' + (bountyBoard.length - 15) + ' more';
+        }
+
+        var description = '[center][b][color=#FFD700]BOUNTY BOARD[/color][/b][/center]\n[center]Gold Available: [color=#00FF00]' + totalGold + '[/color][/center]\n' + bountyList;
+
+        try {
+            channel.setDescription(description);
+        } catch (e) {
+            logMessage('ERROR updating channel: ' + e.message, 1);
+        }
     }
 
     function displayBountyList(ev) {
@@ -1058,39 +1078,6 @@ registerPlugin({
         }
     }
 
-    function updateChannelDescription() {
-        var channel = backend.getChannelByID(displayChannelId);
-        if (!channel) {
-            logMessage('ERROR: Display channel ' + displayChannelId + ' not found', 1);
-            return;
-        }
-
-        var totalGold = 0;
-        for (var i = 0; i < bountyBoard.length; i++) {
-            totalGold += bountyBoard[i].gold;
-        }
-
-        var bountyList = '';
-        for (var i = 0; i < bountyBoard.length && i < 15; i++) {
-            var b = bountyBoard[i];
-            var claimedStatus = b.claimPending ? ' [CLAIM PENDING]' : (b.claimedBy ? ' [CLAIMED]' : '');
-            bountyList += (i + 1) + '. ' + b.target + ' - ' + formatGold(b.gold) + claimedStatus + '\n';
-        }
-
-        if (bountyBoard.length === 0) {
-            bountyList = '[center]No active bounties[/center]';
-        } else if (bountyBoard.length > 15) {
-            bountyList += '... and ' + (bountyBoard.length - 15) + ' more';
-        }
-
-        var description = '[center][b][color=#FFD700]BOUNTY BOARD[/color][/b][/center]\n[center]Gold Available: [color=#00FF00]' + totalGold + '[/color][/center]\n' + bountyList;
-
-        try {
-            channel.setDescription(description);
-        } catch (e) {
-            logMessage('ERROR updating channel: ' + e.message, 1);
-        }
-    }
 
     function startAutoRefresh() {
         if (refreshTimer) {
