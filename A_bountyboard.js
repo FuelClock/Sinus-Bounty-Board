@@ -358,8 +358,8 @@ registerPlugin({
         var helpMsg = '[BountyHunter] BOUNTY COMMANDS:\n' +
             p + ' add <playername> <gold> [reason] - Place a bounty\n' +
             p + ' list - List all active bounties\n' +
-            p + ' remove <number> - Remove bounty by ranking (admin)\n' +
-            p + ' remove <target> - Remove bounty by name (admin)\n' +
+            p + ' remove <number> - Remove bounty by ranking (owner or admin)\n' +
+            p + ' remove <target> - Remove bounty by name (owner or admin)\n' +
             p + ' clear - Clear all bounties (admin)\n' +
             p + ' test - Test bot authorization\n' +
             p + ' help - Show this help message\n' +
@@ -484,9 +484,22 @@ registerPlugin({
             }
         }
 
-        // Claim ALL matching bounties
+        // Claim ALL matching bounties that the invoker did not post
+        var claimableBounties = [];
         for (var k = 0; k < foundBounties.length; k++) {
             var fb = foundBounties[k];
+            if (!equalsIgnoreCase(fb.postedBy, invoker.name())) {
+                claimableBounties.push(fb);
+            }
+        }
+
+        if (claimableBounties.length === 0) {
+            invoker.chat('[BountyHunter] You cannot claim your own bounty');
+            return;
+        }
+
+        for (var k = 0; k < claimableBounties.length; k++) {
+            var fb = claimableBounties[k];
             fb.claimPending = true;
             fb.claimedBy = invoker.name();
             fb.claimedAt = new Date().toISOString();
