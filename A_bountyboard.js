@@ -239,6 +239,16 @@ registerPlugin({
         }
         logMessage('AUTH CHECK: ' + invoker.name() + ' groups=[' + invokerGroupIds.join(',') + '] authGroup=' + authorizedGroupId + ' adminGroup=' + botAdminGroupId + ' >> authorized=' + invokerIsAuthorized + ' admin=' + invokerIsAdmin, 3);
 
+        // confirm is claimant-scoped and bypasses the general admin/authorized gate
+        if (subCommand === 'confirm') {
+            if (args.trim().length < 1) {
+                invoker.chat('Usage: !bounty confirm <target>');
+                return;
+            }
+            handleConfirmBounty(parts.slice(1), ev);
+            return;
+        }
+
         if (!invokerIsAdmin && !invokerIsAuthorized) {
             invoker.chat('[BountyHunter] Permission denied');
             return;
@@ -352,6 +362,7 @@ registerPlugin({
             p + ' help - Show this help message\n' +
             p + ' claim <target> - Claim a bounty you have killed\n' +
             p + ' unclaim <target> - Cancel a pending claim\n' +
+            p + ' confirm <target> - Confirm evidence upload (claimant)\n' +
             p + ' debug - View store contents\n' +
             p + ' complete <target> - Remove bounty by name';
 
@@ -415,7 +426,10 @@ registerPlugin({
             postedBy: invoker.name(),
             postedAt: new Date().toISOString(),
             claimedBy: null,
-            claimedAt: null
+            claimedAt: null,
+            evidenceConfirmed: false,
+            evidenceConfirmedBy: null,
+            evidenceConfirmedAt: null
         };
 
         bountyBoard.push(bountyEntry);
@@ -436,147 +450,145 @@ registerPlugin({
         var invoker = ev.client;
         var targetName = parts.join(' ');
         var displayChannel = backend.getChannelByID(displayChannelId);
-        var foundBounty = null;
+        var foundBounties = [];
 
-        // Find the bounty with exact target name match
+        // Find ALL bounties with exact target name match (multiple posters can bounty same target)
         for (var i = 0; i < bountyBoard.length; i++) {
             if (equalsIgnoreCase(bountyBoard[i].target, targetName)) {
-                foundBounty = bountyBoard[i];
-                break;
+                foundBounties.push(bountyBoard[i]);
             }
         }
 
-        if (!foundBounty) {
+        if (foundBounties.length === 0) {
             invoker.chat('[BountyHunter] Bounty not found: ' + targetName);
             return;
         }
 
-        // Check if already fully claimed
-        if (foundBounty.claimedBy && !foundBounty.claimPending) {
-            invoker.chat('[BountyHunter] Bounty already claimed by ' + foundBounty.claimedBy);
-            return;
+        // Check each bounty for claim conflicts
+        for (var j = 0; j < foundBounties.length; j++) {
+            var foundBounty = foundBounties[j];
+
+            // Check if already fully claimed by someone else
+            if (foundBounty.claimPending && foundBounty.claimedBy && !equalsIgnoreCase(foundBounty.claimedBy, invoker.name())) {
+                invoker.chat('[BountyHunter] Bounty already claim pending by ' + foundBounty.claimedBy + ': ' + foundBounty.target);
+                return;
+            }
+
+            // Check if this user already claimed this specific bounty
+            if (foundBounty.claimPending && equalsIgnoreCase(foundBounty.claimedBy, invoker.name())) {
+                invoker.chat('[BountyHunter] You already have a pending claim on ' + foundBounty.target);
+                return;
+            }
         }
 
-        // Check if already claim pending by someone else
-        if (foundBounty.claimPending && foundBounty.claimedBy && !equalsIgnoreCase(foundBounty.claimedBy, invoker.name())) {
-            invoker.chat('[BountyHunter] Bounty already claim pending by ' + foundBounty.claimedBy);
-            return;
-        }
+        // Claim ALL matching bounties
+        for (var k = 0; k < foundBounties.length; k++) {
+            var fb = foundBounties[k];
+            fb.claimPending = true;
+            fb.claimedBy = invoker.name();
+            fb.claimedAt = new Date().toISOString();
 
-        // Check if this user already claimed this bounty
-        if (foundBounty.claimPending && equalsIgnoreCase(foundBounty.claimedBy, invoker.name())) {
-            invoker.chat('[BountyHunter] You already have a pending claim on this bounty');
-            return;
-        }
+            // Assign file access group to poster if display channel available
+            if (displayChannel && fb.postedBy && !equalsIgnoreCase(fb.postedBy, invoker.name())) {
+                try {
+                    var allClients = backend.getClients();
+                    var posterClients = searchClients(fb.postedBy, false, false, allClients);
+                    if (posterClients.length > 0) {
+                        var client = posterClients[0];
+                        var channelGroups = backend.getChannelGroups();
+                        var fileAccessGroup = null;
+                        for (var gi = 0; gi < channelGroups.length; gi++) {
+                            if (String(channelGroups[gi].id()) === fileAccessGroupId) {
+                                fileAccessGroup = channelGroups[gi];
+                                break;
+                            }
+                        }
+                        if (fileAccessGroup) {
+                            var posterOrigGroup = client.getChannelGroup();
+                            fb.posterOriginalGroupId = posterOrigGroup ? posterOrigGroup.id() : null;
+                            if (persistenceInitialized) {
+                                saveData();
+                            }
+                            displayChannel.setChannelGroup(client, fileAccessGroup);
+                            logMessage('Bounty claim: Assigned file access group ' + fileAccessGroupId + ' to original poster ' + fb.postedBy + ' for bounty ' + fb.target, 3);
+                        }
+                    }
+                } catch (e) {
+                    logMessage('Bounty claim: Failed to assign file access group to original poster ' + fb.postedBy + ': ' + e.message, 2);
+                }
+            }
 
-        // Mark as claim pending (NOT removed from board)
-        foundBounty.claimPending = true;
-        foundBounty.claimedBy = invoker.name();
-        foundBounty.claimedAt = new Date().toISOString();
-
-        // Persist the change
-        if (persistenceInitialized) {
-            saveData();
+            if (persistenceInitialized) {
+                saveData();
+            }
         }
 
         // Update the channel description to show CLAIM PENDING status
         updateChannelDescription();
 
-        // Notify the original poster if they are online
-        var originalPoster = foundBounty.postedBy;
-        if (originalPoster && !equalsIgnoreCase(originalPoster, invoker.name())) {
-            try {
-                var allClients = backend.getClients();
-                var posterClients = searchClients(originalPoster, false, false, allClients);
-                if (posterClients.length > 0) {
-                    var posterPokeMsg = '[BountyHunter] Claim filed on ' + foundBounty.target + '. Check the bounty board files for evidence.';
-                    if (posterPokeMsg.length > 80) {
-                        posterPokeMsg = posterPokeMsg.substring(0, 80);
+        // Notify ALL original posters about the claim (they must confirm evidence before full notification)
+        var notifiedPosters = [];
+        for (var pi = 0; pi < foundBounties.length; pi++) {
+            var posterName = foundBounties[pi].postedBy;
+            if (posterName && !equalsIgnoreCase(posterName, invoker.name()) && notifiedPosters.indexOf(posterName) === -1) {
+                try {
+                    var allPClients = backend.getClients();
+                    var posterClients = searchClients(posterName, false, false, allPClients);
+                    if (posterClients.length > 0) {
+                        var posterPokeMsg = '[BountyHunter] Claim filed on ' + foundBounties[pi].target + '. Evidence pending confirmation.';
+                        if (posterPokeMsg.length > 80) {
+                            posterPokeMsg = posterPokeMsg.substring(0, 80);
+                        }
+                        posterClients[0].poke(posterPokeMsg);
+                        logMessage('Bounty claim: Notified original poster ' + posterName + ' about claim on ' + foundBounties[pi].target, 3);
+                        notifiedPosters.push(posterName);
                     }
-                    posterClients[0].poke(posterPokeMsg);
-                    logMessage('Bounty claim: Notified original poster ' + originalPoster + ' about claim on ' + foundBounty.target, 3);
+                } catch (e) {
+                    logMessage('Bounty claim: Failed to notify original poster ' + posterName + ': ' + e.message, 2);
                 }
-            } catch (e) {
-                logMessage('Bounty claim: Failed to notify original poster ' + originalPoster + ': ' + e.message, 2);
             }
         }
 
         // Poke claimant with evidence submission instructions
-        // Send short poke first (within TeamSpeak poke length limit)
         try {
-            invoker.poke('[BountyHunter] Claim pending on ' + foundBounty.target + '. Check your DM.');
+            invoker.poke('[BountyHunter] Claim pending on ' + targetName + '. Check your DM.');
         } catch (e) {
             logMessage('Bounty claim: Failed to poke claimant ' + invoker.name() + ': ' + e.message, 2);
         }
 
         // Send full instructions via channel chat
-        var dmMessage = '[BountyHunter] Claim instructions for bounty ' + foundBounty.target + ': Upload your screenshot or video evidence to the file browser in the bounty board channel(right click the channel > browse files). If the bounty poster is not online in Teamspeak, send a private message to them ingame to notify them about the claim.';
+        var dmMessage = '[BountyHunter] Claim instructions for bounty ' + targetName + ': Upload your screenshot or video evidence to the file browser in the bounty board channel (right click the channel > browse files). Use !bounty confirm ' + targetName + ' after uploading.';
         try {
             invoker.chat(dmMessage);
         } catch (e) {
             logMessage('Bounty claim: Failed to send DM instructions to ' + invoker.name() + ': ' + e.message, 2);
         }
 
-        // ===== FILE ACCESS GROUP ASSIGNMENT =====
-        // Assign persistent file access group to original poster (remains until bounty is completed)
-        if (originalPoster && !equalsIgnoreCase(originalPoster, invoker.name())) {
-            try {
-                var allClients = backend.getClients();
-                var posterClients = searchClients(originalPoster, false, false, allClients);
-                if (posterClients.length > 0) {
-                    var client = posterClients[0];
-                    if (displayChannel) {
-                        var channelGroups = backend.getChannelGroups();
-                        var fileAccessGroup = null;
-                        for (var i = 0; i < channelGroups.length; i++) {
-                            if (String(channelGroups[i].id()) === fileAccessGroupId) {
-                                fileAccessGroup = channelGroups[i];
-                                break;
-                            }
-                        }
-
-                        if (fileAccessGroup) {
-                            var posterOrigGroup = client.getChannelGroup();
-                            foundBounty.posterOriginalGroupId = posterOrigGroup ? posterOrigGroup.id() : null;
-                            if (persistenceInitialized) {
-                                saveData();
-                            }
-                            displayChannel.setChannelGroup(client, fileAccessGroup);
-                            logMessage('Bounty claim: Assigned file access group ' + fileAccessGroupId + ' to original poster ' + originalPoster + ' for bounty ' + foundBounty.target, 3);
-                        }
-                    }
-                }
-            } catch (e) {
-                logMessage('Bounty claim: Failed to assign file access group to original poster ' + originalPoster + ': ' + e.message, 2);
-            }
-        }
-
-        // Grant claimant file access group temporarily (5 minutes)
+        // Grant claimant file access group temporarily
         if (displayChannel) {
             try {
                 var channelGroups = backend.getChannelGroups();
                 var fileAccessGroup = null;
-                for (var i = 0; i < channelGroups.length; i++) {
-                    if (String(channelGroups[i].id()) === fileAccessGroupId) {
-                        fileAccessGroup = channelGroups[i];
+                for (var ci = 0; ci < channelGroups.length; ci++) {
+                    if (String(channelGroups[ci].id()) === fileAccessGroupId) {
+                        fileAccessGroup = channelGroups[ci];
                         break;
                     }
                 }
 
                 if (fileAccessGroup) {
-                    // Get current channel group
                     var currentChannelGroup = invoker.getChannelGroup();
                     var originalChannelGroup = currentChannelGroup ? currentChannelGroup.id() : null;
-                    foundBounty.claimantOriginalGroupId = originalChannelGroup;
+                    for (var fi = 0; fi < foundBounties.length; fi++) {
+                        foundBounties[fi].claimantOriginalGroupId = originalChannelGroup;
+                    }
                     if (persistenceInitialized) {
                         saveData();
                     }
 
-                    // Assign file access group
                     displayChannel.setChannelGroup(invoker, fileAccessGroup);
-                    logMessage('Bounty claim: Assigned file access group ' + fileAccessGroupId + ' to claimant ' + invoker.name() + ' for bounty ' + foundBounty.target, 3);
+                    logMessage('Bounty claim: Assigned file access group ' + fileAccessGroupId + ' to claimant ' + invoker.name() + ' for ' + targetName, 3);
 
-                    // Set timer to remove file access group after configurable duration
                     var timerKey = invoker.name() + ':' + displayChannelId;
                     if (bountyClaimTimers[timerKey]) {
                         clearTimeout(bountyClaimTimers[timerKey]);
@@ -592,15 +604,16 @@ registerPlugin({
                         }
                         delete bountyClaimTimers[timerKey];
 
-                        // The file-access window has ended; keep the claim but remove its pending state
-                        if (foundBounty && foundBounty.claimPending &&
-                            equalsIgnoreCase(foundBounty.claimedBy, invoker.name())) {
-                            foundBounty.claimPending = false;
-                            if (persistenceInitialized) {
-                                saveData();
+                        for (var ri = 0; ri < foundBounties.length; ri++) {
+                            var rBounty = foundBounties[ri];
+                            if (rBounty && rBounty.claimPending && equalsIgnoreCase(rBounty.claimedBy, invoker.name())) {
+                                rBounty.claimPending = false;
+                                if (persistenceInitialized) {
+                                    saveData();
+                                }
+                                updateChannelDescription();
+                                logMessage('Bounty claim: Pending status expired for ' + invoker.name() + ' after ' + fileAccessTimerSeconds + ' seconds', 3);
                             }
-                            updateChannelDescription();
-                            logMessage('Bounty claim: Pending status expired for ' + invoker.name() + ' after ' + fileAccessTimerSeconds + ' seconds', 3);
                         }
                     }, fileAccessTimerSeconds * 1000);
 
@@ -617,9 +630,7 @@ registerPlugin({
             logMessage('Bounty claim: Display channel ' + displayChannelId + ' not found', 2);
             invoker.chat('[BountyHunter] Display channel not found');
         }
-
     }
-
     function revokeClaimAccess(bounty) {
         // Restore the original display-channel group for the poster and claimant
         // so completing/removing a bounty does not leave file-access permissions behind.
@@ -666,8 +677,8 @@ registerPlugin({
         var invoker = ev.client;
         var invokerName = invoker.name();
 
-        // Owners can complete their own bounties; admins can complete any
-        var isOwnerOrAdmin = function(bounty) {
+        // Only the bounty poster or an admin can complete that specific bounty
+        var isBountyOwner = function(bounty) {
             return equalsIgnoreCase(bounty.postedBy, invokerName) || isAdmin(invoker);
         };
 
@@ -726,8 +737,8 @@ registerPlugin({
         var invoker = ev.client;
         var invokerName = invoker.name();
 
-        // Owners can remove their own bounties; admins can remove any
-        var isOwnerOrAdmin = function(bounty) {
+        // Only the bounty poster or an admin can remove that specific bounty
+        var isBountyOwner = function(bounty) {
             return equalsIgnoreCase(bounty.postedBy, invokerName) || isAdmin(invoker);
         };
 
@@ -790,6 +801,91 @@ registerPlugin({
         }
 
         invoker.chat('[BountyHunter] Bounty not found: "' + searchTerm + '". Use !bounty list to see all bounties.');
+    }
+
+    function handleConfirmBounty(args, ev) {
+        var invoker = ev.client;
+        var invokerName = invoker.name();
+        var targetName = args.join(' ');
+
+        // Find all bounties with matching target
+        var foundBounties = [];
+        for (var i = 0; i < bountyBoard.length; i++) {
+            if (equalsIgnoreCase(bountyBoard[i].target, targetName)) {
+                foundBounties.push(bountyBoard[i]);
+            }
+        }
+
+        if (foundBounties.length === 0) {
+            invoker.chat('[BountyHunter] Bounty not found: ' + targetName);
+            return;
+        }
+
+        // Verify invoker is the claimant on all matching bounties (or admin)
+        for (var j = 0; j < foundBounties.length; j++) {
+            var fb = foundBounties[j];
+            if (!isAdmin(invoker) && !equalsIgnoreCase(fb.claimedBy, invokerName)) {
+                invoker.chat('[BountyHunter] You can only confirm your own pending claim');
+                return;
+            }
+            // Reject if not pending
+            if (!fb.claimPending) {
+                invoker.chat('[BountyHunter] No pending claim on ' + fb.target);
+                return;
+            }
+            // Reject if already confirmed
+            if (fb.evidenceConfirmed) {
+                invoker.chat('[BountyHunter] Evidence is already confirmed for ' + fb.target);
+                return;
+            }
+        }
+
+        // Mark all matching bounties as evidence confirmed
+        for (var k = 0; k < foundBounties.length; k++) {
+            var cf = foundBounties[k];
+            cf.evidenceConfirmed = true;
+            cf.evidenceConfirmedBy = invoker.name();
+            cf.evidenceConfirmedAt = new Date().toISOString();
+            if (persistenceInitialized) {
+                saveData();
+            }
+        }
+
+        // Notify ALL original posters across all matching bounties
+        var notifiedPosters = [];
+        for (var pi = 0; pi < foundBounties.length; pi++) {
+            var posterName = foundBounties[pi].postedBy;
+            if (posterName && !equalsIgnoreCase(posterName, invoker.name()) && notifiedPosters.indexOf(posterName) === -1) {
+                try {
+                    var allClients = backend.getClients();
+                    var posterClients = searchClients(posterName, false, false, allClients);
+                    var notifyMsg = '[BountyHunter] Evidence confirmed for ' + foundBounties[pi].target + ' by ' + invoker.name() + '. Check the bounty board files.';
+                    notifyMsg = truncate(notifyMsg, 80);
+                    var notifiedCount = 0;
+                    for (var ci = 0; ci < posterClients.length; ci++) {
+                        try {
+                            posterClients[ci].poke(notifyMsg);
+                            notifiedCount++;
+                        } catch (e) {
+                            logMessage('Bounty confirm: Failed to notify poster client: ' + e.message, 2);
+                        }
+                    }
+                    if (notifiedCount > 0) {
+                        logMessage('Bounty confirm: Notified ' + notifiedCount + ' poster client(s) for ' + posterName + ' about confirmed evidence on ' + foundBounties[pi].target, 3);
+                        notifiedPosters.push(posterName);
+                    } else if (posterClients.length > 0) {
+                        logMessage('Bounty confirm: Poster ' + posterName + ' is online but no notification was delivered', 2);
+                    } else {
+                        logMessage('Bounty confirm: Poster ' + posterName + ' is not online; confirmation was recorded', 2);
+                    }
+                } catch (e) {
+                    logMessage('Bounty confirm: Failed to resolve poster ' + posterName + ': ' + e.message, 2);
+                }
+            }
+        }
+
+        updateChannelDescription();
+        invoker.chat('[BountyHunter] Evidence confirmed for ' + targetName);
     }
 
     function handleUnclaim(parts, ev) {
@@ -862,7 +958,10 @@ registerPlugin({
         for (var i = 0; i < bountyBoard.length; i++) {
             var b = bountyBoard[i];
             var goldDisplay = formatGold(b.gold);
-            msg += (i + 1) + '.    ' + truncate(b.target, 17) + '  ' + goldDisplay + '  ' + truncate(b.reason || 'No reason', 40) + ' (' + b.postedBy + ')\n';
+            msg += (i + 1) + '.    ' + truncate(b.target, 17) + '  ' + goldDisplay + '  ' + truncate(b.reason || 'No reason', 40) + ' (by ' + b.postedBy + ')\n';
+            if (b.evidenceConfirmed) {
+                msg += '       EVIDENCE CONFIRMED by ' + b.evidenceConfirmedBy + '\n';
+            }
             if (b.claimPending) {
                 msg += '       CLAIM PENDING by ' + b.claimedBy + ' at ' + new Date(b.claimedAt).toLocaleString() + '\n';
             } else if (b.claimedBy) {
@@ -921,6 +1020,9 @@ registerPlugin({
         out.claimedBy = entry.claimedBy || null;
         out.claimedAt = entry.claimedAt || null;
         out.claimPending = !!entry.claimPending;
+        out.evidenceConfirmed = !!entry.evidenceConfirmed;
+        out.evidenceConfirmedBy = entry.evidenceConfirmedBy || null;
+        out.evidenceConfirmedAt = entry.evidenceConfirmedAt || null;
 
         return out;
     }
