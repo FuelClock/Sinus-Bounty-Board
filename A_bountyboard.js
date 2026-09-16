@@ -678,7 +678,7 @@ registerPlugin({
         var invokerName = invoker.name();
 
         // Only the bounty poster or an admin can complete that specific bounty
-        var isBountyOwner = function(bounty) {
+        var isOwnerOrAdmin = function(bounty) {
             return equalsIgnoreCase(bounty.postedBy, invokerName) || isAdmin(invoker);
         };
 
@@ -738,7 +738,7 @@ registerPlugin({
         var invokerName = invoker.name();
 
         // Only the bounty poster or an admin can remove that specific bounty
-        var isBountyOwner = function(bounty) {
+        var isOwnerOrAdmin = function(bounty) {
             return equalsIgnoreCase(bounty.postedBy, invokerName) || isAdmin(invoker);
         };
 
