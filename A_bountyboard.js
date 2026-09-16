@@ -844,7 +844,9 @@ registerPlugin({
             }
         }
 
-        // Notify ALL original posters across all matching bounties
+        // Notify ALL original posters across all matching bounties.
+        // Pokes are short and get clipped, so the poke carries only the
+        // crucial info and the full details go out as a chat/DM message.
         var notifiedPosters = [];
         for (var pi = 0; pi < foundBounties.length; pi++) {
             var posterName = foundBounties[pi].postedBy;
@@ -852,22 +854,23 @@ registerPlugin({
                 try {
                     var allClients = backend.getClients();
                     var posterClients = searchClients(posterName, false, false, allClients);
-                    var notifyMsg = '[BountyHunter] Evidence uploaded for ' + foundBounties[pi].target + ' by ' + invoker.name() + '. Check the bounty board files.';
-                    notifyMsg = truncate(notifyMsg, 80);
-                    var notifiedCount = 0;
-                    for (var ci = 0; ci < posterClients.length; ci++) {
-                        try {
-                            posterClients[ci].poke(notifyMsg);
-                            notifiedCount++;
-                        } catch (e) {
-                            logMessage('Bounty evidence: Failed to notify poster client: ' + e.message, 2);
+                    if (posterClients.length > 0) {
+                        var evidenceTarget = foundBounties[pi].target;
+                        var claimantName = invoker.name();
+                        var pokeMsg = '[BountyHunter] Evidence uploaded: ' + evidenceTarget + ' by ' + claimantName;
+                        var dmMsg = '[BountyHunter] Evidence uploaded for bounty "' + evidenceTarget + '" by ' + claimantName + '. Please check the bounty board channel files to review the uploaded evidence.';
+                        var notifiedCount = 0;
+                        for (var ci = 0; ci < posterClients.length; ci++) {
+                            try {
+                                posterClients[ci].poke(pokeMsg);
+                                posterClients[ci].chat(dmMsg);
+                                notifiedCount++;
+                            } catch (e) {
+                                logMessage('Bounty evidence: Failed to notify poster client: ' + e.message, 2);
+                            }
                         }
-                    }
-                    if (notifiedCount > 0) {
-                        logMessage('Bounty evidence: Notified ' + notifiedCount + ' poster client(s) for ' + posterName + ' about uploaded evidence on ' + foundBounties[pi].target, 3);
+                        logMessage('Bounty evidence: Notified ' + notifiedCount + ' poster client(s) for ' + posterName + ' about uploaded evidence on ' + evidenceTarget, 3);
                         notifiedPosters.push(posterName);
-                    } else if (posterClients.length > 0) {
-                        logMessage('Bounty evidence: Poster ' + posterName + ' is online but no notification was delivered', 2);
                     } else {
                         logMessage('Bounty evidence: Poster ' + posterName + ' is not online; confirmation was recorded', 2);
                     }
