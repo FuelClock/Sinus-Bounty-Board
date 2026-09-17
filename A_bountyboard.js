@@ -1,13 +1,3 @@
-// Bounty Hunter Script v2.3.0 for SinusBot
-// Complete bounty board system for sea battle guilds
-// FIXED: Replaced non-existent private-message API with client.chat()
-//       so command responses render in the current channel
-// ENHANCED: Added name-based and numeric bounty removal with parsing
-// FIXED: Improved persistence with error handling, data validation, and atomic saves
-// ENHANCED: Better command handling and UI improvements
-// FIXED: Improved initialization and persistence initialization flag
-// CONFIG: Changed default authorized group to 23, display channel to 832, admin group to 3
-
 registerPlugin({
     name: 'Bounty Hunter',
     version: '2.3.0',
