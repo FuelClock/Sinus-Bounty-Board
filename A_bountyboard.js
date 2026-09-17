@@ -848,7 +848,7 @@ registerPlugin({
                         var evidenceTarget = foundBounties[pi].target;
                         var claimantName = invoker.name();
                         var pokeMsg = '[BountyHunter] Evidence uploaded: ' + evidenceTarget + ' by ' + claimantName;
-                        var dmMsg = '[BountyHunter] Evidence uploaded for bounty "' + evidenceTarget + '" by ' + claimantName + '. Please check the bounty board channel files to review the uploaded evidence. Complete payment with ' + claimantName + ' ingame, then use !bounty clear to complete the bounty.';
+                        var dmMsg = '[BountyHunter] Evidence uploaded for bounty "' + evidenceTarget + '" by ' + claimantName + '. Please check the bounty board channel files to review the uploaded evidence. Complete payment with ' + claimantName + ' ingame, then use !bounty complete ' + evidenceTarget + ' to complete the bounty.';
                         var notifiedCount = 0;
                         for (var ci = 0; ci < posterClients.length; ci++) {
                             try {
