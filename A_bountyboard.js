@@ -197,23 +197,6 @@ registerPlugin({
         logMessage('Initialization complete. Loaded ' + bountyBoard.length + ' bounties');
     }
 
-    function getReplyFn(ev) {
-        if (ev.mode === 2) {
-            try {
-                var ch = ev.channel();
-                if (ch && typeof ch.chat === 'function') {
-                    return ch.chat.bind(ch);
-                }
-            } catch (e) {
-                logMessage('getReplyFn: channel chat unavailable: ' + e.message, 2);
-            }
-        }
-        if (ev.mode === 3) {
-            return backend.chat.bind(backend);
-        }
-        return ev.client.chat.bind(ev.client);
-    }
-
     // ===== EVENT HANDLERS =====
     event.on('chat', function(ev) {
         if (ev.client.isSelf()) {
@@ -232,7 +215,6 @@ registerPlugin({
     // ===== COMMAND HANDLING =====
     function handleCommand(args, ev) {
         var invoker = ev.client;
-        var reply = getReplyFn(ev);
 
         var invokerIsAdmin = isAdmin(invoker);
         var invokerIsAuthorized = isAuthorized(invoker);
@@ -938,6 +920,10 @@ registerPlugin({
         if (!isAdmin(invoker)) {
             invoker.chat('[BountyHunter] Admin only');
             return;
+        }
+
+        for (var i = 0; i < bountyBoard.length; i++) {
+            revokeClaimAccess(bountyBoard[i]);
         }
 
         bountyBoard = [];
