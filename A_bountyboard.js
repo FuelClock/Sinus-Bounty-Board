@@ -197,6 +197,23 @@ registerPlugin({
         logMessage('Initialization complete. Loaded ' + bountyBoard.length + ' bounties');
     }
 
+    function getReplyFn(ev) {
+        if (ev.mode === 2) {
+            try {
+                var ch = ev.channel();
+                if (ch && typeof ch.chat === 'function') {
+                    return ch.chat.bind(ch);
+                }
+            } catch (e) {
+                logMessage('getReplyFn: channel chat unavailable: ' + e.message, 2);
+            }
+        }
+        if (ev.mode === 3) {
+            return backend.chat.bind(backend);
+        }
+        return ev.client.chat.bind(ev.client);
+    }
+
     // ===== EVENT HANDLERS =====
     event.on('chat', function(ev) {
         if (ev.client.isSelf()) {
@@ -215,6 +232,7 @@ registerPlugin({
     // ===== COMMAND HANDLING =====
     function handleCommand(args, ev) {
         var invoker = ev.client;
+        var reply = getReplyFn(ev);
 
         var invokerIsAdmin = isAdmin(invoker);
         var invokerIsAuthorized = isAuthorized(invoker);
@@ -232,10 +250,10 @@ registerPlugin({
         var parts = args.trim().split(/\s+/);
         var subCommand = parts[0].toLowerCase();
 
-        // evidence is claimant-scoped and bypasses the general admin/authorized gate
-        if (subCommand === 'evidence') {
+        // uploaded is claimant-scoped and bypasses the general admin/authorized gate
+        if (subCommand === 'uploaded') {
             if (parts.length < 2) {
-                invoker.chat('Usage: !bounty evidence <target>');
+                invoker.chat('Usage: !bounty uploaded <target>');
                 return;
             }
             handleEvidenceUploaded(parts.slice(1), ev);
@@ -355,7 +373,7 @@ registerPlugin({
             p + ' help - Show this help message\n' +
             p + ' claim <target> - Claim a bounty you have killed\n' +
             p + ' unclaim <target> - Cancel a pending claim\n' +
-            p + ' evidence <target> - Mark evidence as uploaded (claimant)\n' +
+            p + ' uploaded <target> - Mark evidence as uploaded (claimant)\n' +
             p + ' debug - View store contents\n' +
             p + ' complete <target> - Remove bounty by name';
 
@@ -540,7 +558,7 @@ registerPlugin({
         }
 
         // Send full instructions via channel chat
-        var dmMessage = '[BountyHunter] Claim instructions for bounty ' + targetName + ': Upload your screenshot or video evidence to the file browser in the bounty board channel (right click the channel > browse files). Use !bounty evidence ' + targetName + ' after uploading.';
+        var dmMessage = '[BountyHunter] Claim instructions for bounty ' + targetName + ': Upload your screenshot or video evidence to the file browser in the bounty board channel (right click the channel > browse files). Use !bounty uploaded ' + targetName + ' after uploading.';
         try {
             invoker.chat(dmMessage);
         } catch (e) {
@@ -912,6 +930,23 @@ registerPlugin({
         }
         updateChannelDescription();
         invoker.chat('[BountyHunter] Unclaimed: ' + foundBounty.target);
+    }
+
+    function handleClearBounties(ev) {
+        var invoker = ev.client;
+
+        if (!isAdmin(invoker)) {
+            invoker.chat('[BountyHunter] Admin only');
+            return;
+        }
+
+        bountyBoard = [];
+        if (persistenceInitialized) {
+            saveData();
+        }
+        updateChannelDescription();
+
+        invoker.chat('[BountyHunter] All bounties cleared');
     }
 
     // ===== DISPLAY FUNCTIONS =====
