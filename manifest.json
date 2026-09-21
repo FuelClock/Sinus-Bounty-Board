@@ -1,10 +1,1 @@
-{
-    "name": "Bounty Hunter",
-    "version": "2.2.10",
-    "description": "Complete bounty board system with persistent storage",
-    "author": "FuelClock",
-    "engine": ">= 0.9.16",
-    "backends": ["ts3"],
-    "requiredModules": ["engine", "backend", "event"],
-    "autorun": false
-}
+{"name": "Bounty Hunter", "version": "2.3.1", "description": "Complete bounty board system with configurable currency and chest conversion rate", "author": "FuelClock", "engine": ">= 0.9.16", "backends": ["ts3"], "requiredModules": ["engine", "backend", "event", "store"], "autorun": false, "vars": [{"name": "BOT_NAME", "title": "Bot Command Name", "type": "string", "default": "bounty"}, {"name": "AUTHORIZED_GROUP", "title": "Server Group ID (authorized to place bounties)", "type": "string", "default": "23"}, {"name": "DISPLAY_CHANNEL_ID", "title": "Channel ID (display bounty board in description)", "type": "string", "default": "832"}, {"name": "BOT_ADMIN_GROUP", "title": "Server Group ID (admin)", "type": "string", "default": "17"}, {"name": "MAX_ACTIVE_BOUNTIES", "title": "Maximum active bounties at once", "type": "number", "default": 50}, {"name": "AUTO_REFRESH_INTERVAL", "title": "Auto-refresh channel description (seconds, 0 = off)", "type": "number", "default": 30}, {"name": "MIN_REWARD", "title": "Minimum bounty reward (currency units)", "type": "number", "default": 1}, {"name": "CURRENCY_NAME", "title": "Currency name (displayed in bounties)", "type": "string", "default": "gold"}, {"name": "CURRENCY_CHEST_NAME", "title": "Additional currency chest name (e.g. gold chest)", "type": "string", "default": "gold chest"}, {"name": "CURRENCY_CHEST_RATE", "title": "Conversion rate (currency units per chest)", "type": "number", "default": 500}, {"name": "MAX_REASON_LENGTH", "title": "Maximum reason length (characters)", "type": "number", "default": 50}, {"name": "FILE_ACCESS_TIMER_SECONDS", "title": "Claimant file access timer (seconds)", "type": "number", "default": 300}, {"name": "FILE_ACCESS_GROUP_ID", "title": "Channel Group ID (file access for claim evidence)", "type": "string", "default": "10"}]}
