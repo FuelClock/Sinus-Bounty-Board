@@ -1,6 +1,6 @@
 registerPlugin({
     name: 'Bounty Hunter',
-    version: '2.3.0',
+    version: '2.3.1',
     author: 'FuelClock',
     description: 'Complete bounty board system with persistent storage',
     backends: ['ts3'],
@@ -12,7 +12,10 @@ registerPlugin({
         { name: 'FILE_ACCESS_GROUP_ID', title: 'Channel Group ID (file access for claim evidence)', type: 'string', default: '10' },
         { name: 'MAX_ACTIVE_BOUNTIES', title: 'Maximum active bounties at once', type: 'number', default: 50 },
         { name: 'AUTO_REFRESH_INTERVAL', title: 'Auto-refresh channel description (seconds, 0 = off)', type: 'number', default: 30 },
-        { name: 'MIN_REWARD', title: 'Minimum bounty reward (gold)', type: 'number', default: 1 }
+        { name: 'MIN_REWARD', title: 'Minimum bounty reward (currency units)', type: 'number', default: 1 },
+        { name: 'CURRENCY_NAME', title: 'Currency name (displayed in bounties)', type: 'string', default: 'gold' },
+        { name: 'CURRENCY_CHEST_NAME', title: 'Additional currency chest name (e.g. gold chest)', type: 'string', default: 'gold chest' },
+        { name: 'CURRENCY_CHEST_RATE', title: 'Conversion rate (currency units per chest)', type: 'number', default: 500 }
     ],
     requiredModules: ['engine', 'backend', 'event', 'store'],
     autorun: false
@@ -31,6 +34,12 @@ registerPlugin({
     var fileAccessGroupId = String(config.FILE_ACCESS_GROUP_ID || '10');
     var maxReasonLength = parseInt(config.MAX_REASON_LENGTH) || 50;
     var fileAccessTimerSeconds = parseInt(config.FILE_ACCESS_TIMER_SECONDS) || 300;
+    var currencyName = String(config.CURRENCY_NAME || 'gold').trim() || 'gold';
+    var currencyChestName = String(config.CURRENCY_CHEST_NAME || 'gold chest').trim() || 'gold chest';
+    var currencyChestRate = parseInt(config.CURRENCY_CHEST_RATE, 10);
+    if (isNaN(currencyChestRate) || currencyChestRate <= 0) {
+        currencyChestRate = 500;
+    }
 
     // ===== PERSISTENCE =====
     var bountyBoard = [];
@@ -312,7 +321,7 @@ registerPlugin({
                 var missing = [];
                 if (parts.length < 2) { missing.push('playername'); }
                 if (parts.length < 3) { missing.push('gold amount'); }
-                invoker.chat('[BountyHunter] Missing: ' + missing.join(', ') + '. Usage: !bounty add <playername> <gold_amount> [reason]');
+                invoker.chat('[BountyHunter] Missing: ' + missing.join(', ') + '. Usage: !bounty add <playername> <currency_amount> [reason]');
                 return;
             }
             handlePlaceBounty(parts.slice(1), ev);
@@ -337,7 +346,7 @@ registerPlugin({
             return;
         }
 
-        invoker.chat('Unknown bounty command. Usage: !bounty add <playername> <gold_amount> [reason]');
+        invoker.chat('Unknown bounty command. Usage: !bounty add <playername> <currency_amount> [reason]');
     }
 
     // ===== HELP =====
@@ -346,7 +355,7 @@ registerPlugin({
         var p = '!' + botName;
 
         var helpMsg = '[BountyHunter] BOUNTY COMMANDS:\n' +
-            p + ' add <playername> <gold> [reason] - Place a bounty\n' +
+            p + ' add <playername> <currency_amount> [reason] - Place a bounty\n' +
             p + ' list - List all active bounties\n' +
             p + ' remove <number> - Remove bounty by ranking (bounty owner or admin)\n' +
             p + ' remove <target> - Remove bounty by name (bounty owner or admin)\n' +
@@ -367,7 +376,7 @@ registerPlugin({
         var invoker = ev.client;
 
         if (parts.length < 2) {
-            invoker.chat('Usage: !bounty add <playername> <gold_amount> [reason]');
+            invoker.chat('Usage: !bounty add <playername> <currency_amount> [reason]');
             return;
         }
 
@@ -381,18 +390,18 @@ registerPlugin({
         }
 
         if (!/^\d+$/.test(goldStr)) {
-            invoker.chat('Invalid gold amount — use a positive whole number');
+            invoker.chat('Invalid ' + currencyName.charAt(0).toUpperCase() + currencyName.slice(1) + ' amount — use a positive whole number');
             return;
         }
         var goldAmount = parseInt(goldStr, 10);
 
         if (goldAmount <= 0) {
-            invoker.chat('Invalid gold amount');
+            invoker.chat('Invalid ' + currencyName.charAt(0).toUpperCase() + currencyName.slice(1) + ' amount');
             return;
         }
 
         if (goldAmount < minReward) {
-            invoker.chat('Bounty must be at least ' + minReward + ' gold');
+            invoker.chat('Bounty must be at least ' + minReward + ' ' + currencyName);
             return;
         }
 
@@ -432,10 +441,10 @@ registerPlugin({
         sortBounties();
         updateChannelDescription();
 
-        invoker.chat('Bounty placed on ' + playerName + ' for ' + goldAmount + ' gold!');
+        invoker.chat('Bounty placed on ' + playerName + ' for ' + goldAmount + ' ' + currencyName + '!');
         var botClient = backend.getBotClient();
         if (botClient) {
-            botClient.chat(invoker.name() + ' placed a bounty on ' + playerName + ' for ' + goldAmount + ' gold!');
+            botClient.chat(invoker.name() + ' placed a bounty on ' + playerName + ' for ' + goldAmount + ' ' + currencyName + '!');
         }
     }
 
@@ -938,11 +947,11 @@ registerPlugin({
     // ===== DISPLAY FUNCTIONS =====
 
     function formatGold(gold) {
-        var chests = Math.ceil(gold / 500);
+        var chests = Math.ceil(gold / currencyChestRate);
         if (chests > 0) {
-            return gold + ' gold (' + chests + ' chest' + (chests !== 1 ? 's' : '') + ')';
+            return gold + ' ' + currencyName + ' (' + chests + ' ' + currencyChestName + (chests !== 1 ? 's' : '') + ')';
         }
-        return gold + ' gold';
+        return gold + ' ' + currencyName;
     }
 
     function truncate(value, maxLength) {
@@ -980,7 +989,7 @@ registerPlugin({
             bountyList += '... and ' + (bountyBoard.length - 15) + ' more';
         }
 
-        var description = '[center][b][color=#FFD700]BOUNTY BOARD[/color][/b][/center]\n[center]Gold Available: [color=#00FF00]' + totalGold + '[/color][/center]\n' + bountyList;
+        var description = '[center][b][color=#FFD700]BOUNTY BOARD[/color][/b][/center]\n[center]' + currencyName.charAt(0).toUpperCase() + currencyName.slice(1) + ' Available: [color=#00FF00]' + totalGold + '[/color][/center]\n' + bountyList;
 
         try {
             channel.setDescription(description);
